@@ -2,279 +2,362 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Snap-It</title>
+  <title>Snap-It Studio</title>
   <style>
-    /* ------------------------------------------------------------------ */
-    /* Snap-It UI — "hardware plugin" look.                                */
-    /*   chrome + glossy top-edge highlights + top toolbar : Current       */
-    /*   gold = values / unlock                            : SubLab        */
-    /*   each tab keeps its own colour: scan=green library=orange seq=purple */
-    /* ------------------------------------------------------------------ */
+    /* ================================================================== */
+    /* Snap-It Studio — "Computer Controlled" paper design language:        */
+    /* flat, printed-on-paper surfaces, no gloss/gradients/3-D, near-black   */
+    /* ink on warm grey, one red spot colour, and sequencer steps drawn as   */
+    /* triangles (TB-303 Bass Line style) instead of glowing LEDs.           */
+    /* ================================================================== */
     :root {
-      --bg:          #0c0d14;
-      --bg-2:        #181b26;
-      --panel:       #1c2030;
-      --panel-inset: #13151e;
-      --edge:        #3a4159;
-      --edge-soft:   #2a3040;
-      --text:        #e8eaf2;
-      --muted:       #7d8398;
-      --gold:        #f5c518;   /* universal "value / unlock" colour */
-      --scan:        #38d39f;   /* tab 1 */
-      --library:     #f0922b;   /* tab 2 */
-      --sequencer:   #b96be0;   /* tab 3 */
-      --playhead:    #ffffff;
-      --accent:      var(--scan); /* overridden per active panel */
+      --font: "Bahnschrift", "DIN Alternate", "Oswald", "Segoe UI", system-ui, sans-serif;
+
+      --bg:     #d7d5ce;   /* app background — plain paper grey */
+      --panel:  #e6e4dd;   /* panels / cards                   */
+      --paper:  #efeee9;   /* inputs, lightest surface         */
+      --ink:    #1b1b18;   /* near-black print colour          */
+      --ink-fg: #efeee9;   /* text on top of ink fills         */
+      --muted:  #6f6e68;
+      --line:   #b6b4ab;   /* hairline borders                 */
+      --mark:   #b3b1a8;   /* inactive step triangle           */
+      --mark-2: #97958c;   /* beat-start inactive triangle     */
+      --accent: #d8392b;   /* the one spot colour (record/LED) */
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0;
-      font-family: "Segoe UI", system-ui, Roboto, sans-serif;
-      background:
-        radial-gradient(1200px 500px at 50% -10%, #1a1e2c 0%, transparent 60%),
-        linear-gradient(180deg, #11131c 0%, var(--bg) 70%);
-      color: var(--text);
+      margin: 0; font-family: var(--font); font-weight: 500;
+      background: var(--bg); color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ---- top toolbar (Current-style strip holding the tabs) ---- */
-    .toolbar {
-      display: flex; align-items: stretch; gap: 26px;
-      padding: 0 22px; height: 56px;
-      background: linear-gradient(180deg, #262b3d 0%, #181b27 55%, #14161f 100%);
-      border-bottom: 1px solid #000;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 3px 12px rgba(0,0,0,.55);
+    /* ---------------------------------------------------------------- */
+    /* TOP BAR                                                          */
+    /* ---------------------------------------------------------------- */
+    .studio-bar {
+      display: flex; align-items: stretch; height: 60px;
+      background: var(--panel); border-bottom: 1px solid var(--ink);
     }
-    .wordmark {
-      display: flex; align-items: center;
-      font-size: 24px; font-weight: 800; letter-spacing: -0.6px;
-      text-shadow: 0 1px 0 rgba(0,0,0,.6);
+    .studio-logo {
+      display: flex; align-items: center; gap: 10px; padding: 0 22px;
+      font-size: 19px; letter-spacing: .01em; white-space: nowrap;
+      border-right: 1px solid var(--line);
     }
-    .wordmark span { color: var(--gold); }
+    .studio-logo .mark {
+      width: 26px; height: 20px; border: 2px solid var(--ink); border-radius: 2px;
+      display: inline-block; position: relative;
+    }
+    .studio-logo .mark::before {
+      content: ""; position: absolute; inset: 3px; border: 1.5px solid var(--ink);
+      border-right-color: transparent; border-bottom-color: transparent;
+    }
+    .studio-logo b { font-weight: 700; }
+    .studio-logo .thin { color: var(--muted); font-weight: 400; }
 
-    .tab-bar { display: flex; gap: 2px; align-items: stretch; }
+    /* device-style tabs (these ARE the app's scan/library/sequencer tabs) */
+    .device-tabs { display: flex; align-items: stretch; }
     .tab-button {
-      background: transparent; border: none; cursor: pointer;
-      padding: 0 20px; font-size: 14px; font-weight: 600;
-      letter-spacing: .04em; text-transform: lowercase;
-      border-bottom: 3px solid transparent; opacity: .5;
-      transition: opacity .12s, background .12s;
+      display: flex; align-items: center; gap: 10px;
+      background: transparent; border: none; cursor: pointer; color: var(--muted);
+      padding: 0 26px; font-family: var(--font); font-size: 16px; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      border-right: 1px solid var(--line); border-bottom: 2px solid transparent;
+      transition: color .12s;
     }
-    .tab-button:hover { opacity: .85; background: rgba(255,255,255,.03); }
-    .tab-button.active {
-      opacity: 1; border-bottom-color: currentColor;
-      background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 70%);
-      text-shadow: 0 0 14px currentColor;          /* the "lit" highlight */
+    .tab-button::before { /* a small flat indicator dot */
+      content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--mark);
     }
-    .tab-button[data-tab="scan"]      { color: var(--scan); }
-    .tab-button[data-tab="library"]   { color: var(--library); }
-    .tab-button[data-tab="sequencer"] { color: var(--sequencer); }
+    .tab-button:hover { color: var(--ink); }
+    .tab-button.active { color: var(--ink); border-bottom-color: var(--ink); }
+    .tab-button.active::before { background: var(--accent); }
 
-    .subtitle {
-      margin-left: auto; align-self: center;
-      color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-    }
+    .studio-right { margin-left: auto; display: flex; align-items: center; gap: 16px; padding: 0 18px; }
+    .bpm-wrap { display: flex; align-items: center; gap: 10px; }
+    .bpm-wrap label { font-size: 14px; letter-spacing: .12em; color: var(--ink); }
+    #bpm-slider { width: 120px; accent-color: var(--ink); }
+    #bpm-value { font-size: 14px; color: var(--muted); min-width: 30px; font-variant-numeric: tabular-nums; }
 
-    /* ---- panels (glossy, lit top edge) ---- */
-    .tab-panel { display: none; padding: 22px 24px; }
+    .export-label { font-size: 12px; letter-spacing: .14em; color: var(--muted); }
+    #export-button {
+      width: 32px; height: 32px; border-radius: 50%; padding: 0; cursor: pointer;
+      background: var(--accent); border: none; color: #fff; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #export-button:hover { filter: brightness(1.05); }
+    #export-button.recording { animation: recpulse .9s steps(1) infinite; }
+    @keyframes recpulse { 50% { opacity: .35; } }
+    .hamburger {
+      width: 34px; height: 34px; border-radius: 3px; background: transparent;
+      border: none; color: var(--ink); font-size: 22px; cursor: pointer; line-height: 1;
+    }
+    .hamburger:hover { background: var(--bg); }
+
+    /* ---------------------------------------------------------------- */
+    /* PANELS                                                           */
+    /* ---------------------------------------------------------------- */
+    .stage { padding: 18px; }
+    .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-    #tab-scan      { --accent: var(--scan); }
-    #tab-library   { --accent: var(--library); }
-    #tab-sequencer { --accent: var(--sequencer); }
 
-    .panel {
-      background: linear-gradient(180deg, #262b3d 0%, #1d2130 7%, #1a1e2c 100%);
-      border: 1px solid var(--edge);
-      border-radius: 14px;
-      padding: 18px 20px;
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.09),      /* top highlight */
-        inset 0 0 0 1px rgba(255,255,255,.015),
-        0 16px 40px rgba(0,0,0,.5);
+    .machine {
+      background: var(--panel); border: 1px solid var(--ink); border-radius: 4px;
+      padding: 20px 22px;
     }
-    .panel-title {
-      display: flex; align-items: center; gap: 9px;
-      font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: lowercase;
-      color: var(--accent); margin: 0 0 4px;
+    /* printed branding line: "Object Scanner ... Computer Controlled ... SNAP" */
+    .brand {
+      display: flex; align-items: baseline; gap: 14px;
+      border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 16px;
     }
-    .panel-title::before {
-      content: ""; width: 9px; height: 9px; border-radius: 50%;
-      background: var(--accent); box-shadow: 0 0 12px var(--accent);
-    }
-    .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+    .brand .title { color: var(--ink); font-size: 22px; font-weight: 700; letter-spacing: .01em; }
+    .brand .cc { color: var(--muted); font-size: 13px; letter-spacing: .22em; text-transform: uppercase; }
+    .brand .model { margin-left: auto; color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: .12em; }
+    .hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 
-    /* ---- generic controls (with top sheen) ---- */
-    button {
-      background: linear-gradient(180deg, #2a3042 0%, #1c2030 100%);
-      color: var(--text); border: 1px solid var(--edge); border-radius: 8px;
-      padding: 8px 12px; cursor: pointer; font: inherit; font-size: 13px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
-      transition: border-color .12s, background .12s, color .12s, box-shadow .12s;
+    /* ---- flat controls (no gloss, no shadow) ---- */
+    button.hw {
+      font-family: var(--font); font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+      font-size: 12px; color: var(--ink); cursor: pointer; background: transparent;
+      border: 1px solid var(--ink); border-radius: 3px; padding: 9px 14px;
+      transition: background .1s, color .1s;
     }
-    button:hover { border-color: var(--accent); }
-    select {
-      padding: 9px 10px; border-radius: 8px; font: inherit; font-size: 13px;
-      background: var(--panel-inset); color: var(--text); border: 1px solid var(--edge);
-      box-shadow: inset 0 1px 3px rgba(0,0,0,.5);
+    button.hw:hover { background: var(--ink); color: var(--ink-fg); }
+    button.hw:active { transform: translateY(1px); }
+    button.hw.yellow { background: var(--ink); color: var(--ink-fg); }      /* primary action: filled */
+    button.hw.yellow:hover { background: var(--accent); border-color: var(--accent); }
+    select.hw {
+      font-family: var(--font); font-size: 14px; color: var(--ink);
+      background: var(--paper); border: 1px solid var(--ink); border-radius: 3px; padding: 9px 12px;
     }
-    select:focus { outline: none; border-color: var(--accent); }
 
-    /* ---- scan tab ---- */
-    .scan-row { display: flex; gap: 10px; align-items: center; }
-    #scan-button {
-      border-color: var(--accent); color: var(--accent); font-weight: 600;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent);
-    }
-    #scan-button:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, #2a3042), #1c2030); }
+    /* ---------------------------------------------------------------- */
+    /* SCAN TAB                                                         */
+    /* ---------------------------------------------------------------- */
+    .scan-row { display: flex; gap: 12px; align-items: center; }
 
-    /* ---- library grid ---- */
-    .grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-      gap: 12px;
+    .camera-wrap {
+      position: relative; display: inline-block;
+      border: 1px solid var(--ink); border-radius: 4px;
+      overflow: hidden; background: var(--ink);
+      max-width: 100%; margin-bottom: 12px;
     }
+    .camera-wrap video { display: block; max-width: 100%; height: auto; }
+    .camera-wrap canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; pointer-events: none;
+    }
+    .vision-status {
+      font-size: 13px; color: var(--muted); letter-spacing: .04em;
+      margin: 0 0 14px;
+    }
+    .scan-divider {
+      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--muted); margin: 14px 0 10px; font-weight: 700;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* LIBRARY TAB — sound "cartridges"                                 */
+    /* ---------------------------------------------------------------- */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
     .card {
-      background: linear-gradient(180deg, #1c2030 0%, #15171f 100%);
-      border: 1px solid var(--edge-soft); border-radius: 12px; padding: 13px;
-      min-height: 134px; display: flex; flex-direction: column; gap: 6px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+      background: var(--paper); border: 1px solid var(--ink); border-radius: 4px; padding: 12px;
+      min-height: 140px; display: flex; flex-direction: column; gap: 6px;
     }
-    .card.unlocked {
-      border-left: 3px solid var(--accent);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 16px color-mix(in srgb, var(--accent) 14%, transparent);
-    }
+    .card.unlocked { border-top: 3px solid var(--ink); }
     .card.locked {
       align-items: center; justify-content: center; color: var(--muted);
-      border-style: dashed;
-      background: repeating-linear-gradient(45deg, #121420, #121420 9px, #161824 9px, #161824 18px);
+      background: repeating-linear-gradient(45deg, var(--bg), var(--bg) 9px, var(--panel) 9px, var(--panel) 18px);
+      border-style: dashed; border-color: var(--line);
     }
-    .card-locked-mark { font-size: 36px; font-weight: 800; color: #353b50; }
-    .card-name { font-weight: 700; font-size: 15px; }
-    .card-sub { color: var(--muted); font-size: 12px; letter-spacing: .03em; }
-    .card.unlocked button { font-size: 12px; padding: 6px 9px; }
+    .card-locked-mark { font-size: 40px; font-weight: 800; color: var(--mark); }
+    .card-name {
+      font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--ink-fg); background: var(--ink); border-radius: 2px; padding: 3px 8px; align-self: flex-start;
+    }
+    .card-sub { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+    .card.unlocked button { font-family: var(--font); font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      font-size: 11px; color: var(--ink); cursor: pointer; border: 1px solid var(--ink); border-radius: 3px; padding: 6px 8px;
+      background: transparent; }
     .card.unlocked button:first-of-type { margin-top: auto; }
-    .card.unlocked button:hover { color: var(--accent); }
+    .card.unlocked button:hover { background: var(--ink); color: var(--ink-fg); }
 
-    /* ---- sequencer ---- */
-    .transport {
-      display: flex; gap: 16px; align-items: center; margin-bottom: 18px;
-      padding: 12px 16px;
-      background: linear-gradient(180deg, #1b1f2d, #15171f);
-      border: 1px solid var(--edge-soft); border-radius: 12px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-    }
-    #play-button {
-      border-color: var(--accent); color: var(--accent); font-weight: 600;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent);
-    }
-    #play-button:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, #2a3042), #1c2030); }
-    .transport label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-    .transport input[type=range] { width: 200px; accent-color: var(--gold); }
-    #bpm-value {
-      font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px;
-      color: var(--gold); min-width: 46px; display: inline-block;
-      text-shadow: 0 0 14px rgba(245,197,24,.4);
-    }
+    /* ---------------------------------------------------------------- */
+    /* SEQUENCER TAB — triangle steps (TB-303 style)                    */
+    /* ---------------------------------------------------------------- */
+    .seq-grid { background: var(--paper); border: 1px solid var(--ink); border-radius: 4px; padding: 14px 16px; }
 
-    .track-row {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
-      background: linear-gradient(180deg, #1b1f2d, #15171f);
-      border: 1px solid var(--edge-soft); padding: 9px 12px; border-radius: 10px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    /* number ruler above the steps */
+    .seq-ruler { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .ruler-spacer { width: 128px; flex-shrink: 0; }
+    .ruler-steps { display: flex; gap: 6px; }
+    .ruler-steps span {
+      width: 30px; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted);
+      font-variant-numeric: tabular-nums;
     }
-    .track-label { width: 130px; font-size: 13px; font-weight: 700; flex-shrink: 0; }
-    .track-steps { display: flex; gap: 5px; flex: 1; }
+    .ruler-steps span:nth-child(4n+1) { color: var(--ink); }  /* mark each beat (1,5,9,13) */
+
+    .track-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .track-label {
+      width: 120px; flex-shrink: 0; font-size: 12px; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--ink-fg);
+      background: var(--ink); border-radius: 2px; padding: 6px 8px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .track-steps { display: flex; gap: 6px; align-items: center; }
+
+    /* each step is a flat triangle; off = small grey, on = large ink-filled */
     .step {
-      width: 26px; height: 32px; padding: 0; border-radius: 5px;
-      background: linear-gradient(180deg, #1a1d28, #101218);
-      border: 1px solid #2c3140;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-      transition: box-shadow .08s, background .08s;
+      width: 30px; height: 30px; padding: 0; border: none; background: transparent;
+      cursor: pointer; position: relative; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
     }
-    .step.beat-start { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); }
-    .step.on {
-      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #ffffff), var(--accent));
-      border-color: var(--accent);
-      box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 1px 0 rgba(255,255,255,.35);
+    .step::before {
+      content: ""; width: 11px; height: 10px; background: var(--mark);
+      clip-path: polygon(50% 0, 0 100%, 100% 100%);
+      transition: width .07s, height .07s, background .07s;
     }
-    .step.playhead { outline: 2px solid var(--playhead); outline-offset: -2px; }
-    .track-mute, .track-remove { flex-shrink: 0; font-size: 12px; }
-    .track-mute.active { background: var(--gold); color: #1a1500; border-color: var(--gold); font-weight: 700; }
-    .track-remove:hover { border-color: #e0564f; color: #e0564f; }
-    .empty { color: var(--muted); }
+    .step.beat-start::before { background: var(--mark-2); }  /* slightly stronger on the beat */
+    .step:hover::before { background: var(--muted); }
+    .step.on::before { width: 26px; height: 23px; background: var(--ink); }
+    .step.playhead { background: rgba(27,27,24,.12); }
+    .step.playhead.on::before { background: var(--accent); }
 
-    /* ---- reveal modal ---- */
-    .modal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.66);
-      align-items: center; justify-content: center;
+    .track-mute, .track-remove {
+      font-family: var(--font); font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      font-size: 11px; color: var(--ink); cursor: pointer; border: 1px solid var(--ink); border-radius: 3px; padding: 5px 8px;
+      background: transparent;
     }
+    .track-mute { margin-left: 8px; }
+    .track-mute:hover { background: var(--ink); color: var(--ink-fg); }
+    .track-mute.active { background: var(--ink); color: var(--ink-fg); }
+    .track-remove:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .empty { color: var(--muted); padding: 14px 2px; }
+
+    /* bottom control strip — flat, no metal */
+    .control-plate {
+      margin-top: 16px; display: flex; align-items: center; gap: 16px;
+      background: var(--bg); border: 1px solid var(--ink); border-radius: 4px; padding: 14px 18px;
+    }
+    .control-plate .plate-brand { margin-left: auto; color: var(--muted); font-size: 12px;
+      letter-spacing: .22em; text-transform: uppercase; font-weight: 700; }
+
+    /* ---------------------------------------------------------------- */
+    /* REVEAL MODAL                                                     */
+    /* ---------------------------------------------------------------- */
+    .modal { display: none; position: fixed; inset: 0; background: rgba(20,20,18,.45);
+      align-items: center; justify-content: center; }
     .modal.active { display: flex; }
     .modal-card {
-      background: linear-gradient(180deg, #262b3d, #1a1e2c);
-      padding: 30px 42px; border-radius: 16px; text-align: center;
-      border: 1px solid var(--gold);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 46px rgba(245,197,24,.28);
-      animation: pop .22s ease-out;
+      background: var(--panel); padding: 30px 44px; border-radius: 4px;
+      text-align: center; border: 1px solid var(--ink); animation: pop .18s ease-out;
     }
-    @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    .modal-card h2 { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .1em; }
-    .modal-card .name { font-size: 28px; font-weight: 800; color: var(--gold); margin-bottom: 20px; text-shadow: 0 0 18px rgba(245,197,24,.4); }
-    #reveal-close { border-color: var(--gold); color: var(--gold); padding: 9px 22px; }
+    @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-card h2 { margin: 0 0 10px; color: var(--muted); font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .18em; }
+    .modal-card .name { font-size: 26px; font-weight: 700; color: var(--ink); margin-bottom: 22px; text-transform: uppercase; letter-spacing: .04em; }
+    #reveal-close { font-family: var(--font); }
   </style>
 </head>
 <body>
-  <!-- Top toolbar: wordmark + the three colour-coded tabs (Current-style). -->
-  <div class="toolbar">
-    <div class="wordmark">snap<span>-it</span></div>
-    <nav class="tab-bar">
-      <button class="tab-button active" data-tab="scan">scan</button>
-      <button class="tab-button" data-tab="library">library</button>
-      <button class="tab-button" data-tab="sequencer">sequencer</button>
+  <!-- ================= TOP DEVICE BAR ================= -->
+  <div class="studio-bar">
+    <div class="studio-logo">
+      <span class="mark"></span><b>Snap-It</b><span class="thin">Studio</span>
+    </div>
+
+    <!-- These device tabs ARE the app's scan / library / sequencer tabs. -->
+    <nav class="device-tabs">
+      <button class="tab-button active" data-tab="scan">Scan</button>
+      <button class="tab-button" data-tab="library">Library</button>
+      <button class="tab-button" data-tab="sequencer">Sequencer</button>
     </nav>
-    <div class="subtitle">scan &middot; collect &middot; sequence</div>
-  </div>
 
-  <!-- SCAN TAB: placeholder for the camera. Simulate a scan for now. -->
-  <section id="tab-scan" class="tab-panel active">
-    <div class="panel">
-      <p class="panel-title">scan</p>
-      <p class="hint">Camera view goes here later. For now, simulate scanning an object:</p>
-      <div class="scan-row">
-        <select id="scan-select"></select>
-        <button id="scan-button">simulate scan</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- LIBRARY TAB: every sample, locked (silhouette) or unlocked (playable). -->
-  <section id="tab-library" class="tab-panel">
-    <div class="panel">
-      <p class="panel-title">library</p>
-      <p class="hint">Your collection. Scan more objects to fill in the silhouettes.</p>
-      <div id="library-grid" class="grid"></div>
-    </div>
-  </section>
-
-  <!-- SEQUENCER TAB: the step grid + transport. -->
-  <section id="tab-sequencer" class="tab-panel">
-    <div class="panel">
-      <p class="panel-title">sequencer</p>
-      <div class="transport">
-        <button id="play-button">&#9654; play</button>
-        <button id="stop-button">&#9632; stop</button>
-        <label for="bpm-slider">bpm</label>
+    <div class="studio-right">
+      <div class="bpm-wrap">
+        <label for="bpm-slider">BPM</label>
         <input type="range" id="bpm-slider" min="60" max="180" value="120" />
         <span id="bpm-value">120</span>
       </div>
-      <div id="sequencer-tracks"></div>
+      <span class="export-label">EXPORT</span>
+      <button id="export-button" title="Export the beat (records one bar to a file)">&#8595;</button>
+      <button class="hamburger" title="Menu">&#9776;</button>
     </div>
-  </section>
+  </div>
+
+  <div class="stage">
+
+    <!-- ================= SCAN TAB ================= -->
+    <section id="tab-scan" class="tab-panel active">
+      <div class="machine">
+        <div class="brand">
+          <span class="title">Object Scanner</span>
+          <span class="cc">Computer Controlled</span>
+          <span class="model">SNAP</span>
+        </div>
+        <p class="hint">Point the camera at any object. It will be detected and its sample unlocked automatically.</p>
+        <div class="camera-wrap">
+          <video id="camera-video" autoplay muted playsinline width="480" height="360"></video>
+          <canvas id="camera-canvas"></canvas>
+        </div>
+        <p id="vision-status" class="vision-status">Initialising…</p>
+        <div class="scan-divider">Manual scan</div>
+        <div class="scan-row">
+          <select id="scan-select" class="hw"></select>
+          <button id="scan-button" class="hw yellow">Scan</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LIBRARY TAB ================= -->
+    <section id="tab-library" class="tab-panel">
+      <div class="machine">
+        <div class="brand">
+          <span class="title">Sound Library</span>
+          <span class="cc">Computer Controlled</span>
+          <span class="model">LIB</span>
+        </div>
+        <p class="hint">Your collection. Scan more objects to fill in the silhouettes.</p>
+        <div id="library-grid" class="grid"></div>
+      </div>
+    </section>
+
+    <!-- ================= SEQUENCER TAB ================= -->
+    <section id="tab-sequencer" class="tab-panel">
+      <div class="machine">
+        <div class="brand">
+          <span class="title">Rhythm Composer</span>
+          <span class="cc">Computer Controlled</span>
+          <span class="model">SEQ-16</span>
+        </div>
+
+        <div class="seq-grid">
+          <div class="seq-ruler">
+            <div class="ruler-spacer"></div>
+            <div class="ruler-steps">
+              <span>1</span><span>2</span><span>3</span><span>4</span>
+              <span>5</span><span>6</span><span>7</span><span>8</span>
+              <span>9</span><span>10</span><span>11</span><span>12</span>
+              <span>13</span><span>14</span><span>15</span><span>16</span>
+            </div>
+          </div>
+          <div id="sequencer-tracks"></div>
+        </div>
+
+        <div class="control-plate">
+          <button id="play-button" class="hw yellow">&#9654; Start</button>
+          <button id="stop-button" class="hw">&#9632; Stop</button>
+          <button id="clear-button" class="hw">Clear</button>
+          <span class="plate-brand">Snap-It &middot; TR-Style Sequencer</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
 
   <!-- Unlock reveal modal -->
   <div id="reveal-modal" class="modal">
     <div class="modal-card">
       <h2 id="reveal-title">You unlocked:</h2>
       <div class="name" id="reveal-name"></div>
-      <button id="reveal-close">Nice!</button>
+      <button id="reveal-close" class="hw yellow">Nice!</button>
     </div>
   </div>
 
@@ -301,8 +384,29 @@
     console.log('[bootstrap] Tone loaded:', typeof window.Tone);
   </script>
 
+  <!--
+    Load TensorFlow.js + COCO-SSD the same way Tone.js is loaded above:
+    hide CommonJS globals so the UMD bundles bind to window instead of module.exports.
+  -->
+  <script>
+    window.__savedModule2  = window.module;
+    window.__savedExports2 = window.exports;
+    window.module  = undefined;
+    window.exports = undefined;
+  </script>
+  <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js"></script>
+  <script>
+    window.module  = window.__savedModule2;
+    window.exports = window.__savedExports2;
+    delete window.__savedModule2;
+    delete window.__savedExports2;
+    console.log('[bootstrap] tf loaded:', typeof window.tf, '| cocoSsd:', typeof window.cocoSsd);
+  </script>
+
   <!-- App modules. Plain scripts that attach to window; load order matters. -->
   <script src="src/cameraStub.js"></script>
+  <script src="src/vision/vision.js"></script>
   <script src="src/library.js"></script>
   <script src="src/audioEngine.js"></script>
   <script src="src/ui.js"></script>

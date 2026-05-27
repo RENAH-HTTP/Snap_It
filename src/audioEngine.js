@@ -30,6 +30,8 @@ const audioEngine = (function () {
   let sequence = null;      // the Tone.Sequence driving the loop
   let stepCallback = null;  // optional UI callback fired on every step
   let audioStarted = false; // has the AudioContext been unlocked by a gesture?
+  let recorder = null;      // Tone.Recorder used by the Export button
+  let exporting = false;    // are we currently capturing audio?
 
   // ---- setup -----------------------------------------------------------------
 
@@ -184,6 +186,67 @@ const audioEngine = (function () {
     stepCallback = callback;
   }
 
+  // Turn every step of every track off (the "Clear" button).
+  function clearAllSteps() {
+    tracks.forEach(function (track) {
+      track.steps.fill(false);
+    });
+    console.log('[audioEngine] cleared all steps');
+  }
+
+  // EXPORT (the old record button): capture one bar of the beat to a file.
+  // We hook a Tone.Recorder onto every player, run the transport for exactly
+  // one bar at the current tempo, then write the recording to the user's
+  // Downloads folder. Returns the saved file path (or null on failure).
+  async function exportLoop() {
+    if (exporting) return null;
+    if (typeof Tone.Recorder !== 'function') {
+      console.warn('[audioEngine] Tone.Recorder unavailable — cannot export audio');
+      return null;
+    }
+
+    await ensureAudioStarted();
+    exporting = true;
+
+    recorder = new Tone.Recorder();
+    Object.keys(players).forEach(function (key) { players[key].connect(recorder); });
+    recorder.start();
+
+    // Make sure the loop is actually running while we capture it.
+    const transport = Tone.getTransport();
+    const wasPlaying = transport.state === 'started';
+    if (!wasPlaying) transport.start();
+
+    // One bar (4 beats) at the current BPM, plus a short tail for decays.
+    const barMs = (60 / transport.bpm.value) * 4 * 1000;
+    await new Promise(function (r) { setTimeout(r, barMs + 150); });
+
+    const blob = await recorder.stop();
+    Object.keys(players).forEach(function (key) {
+      try { players[key].disconnect(recorder); } catch (e) {}
+    });
+    recorder.dispose();
+    recorder = null;
+    if (!wasPlaying) transport.stop();
+    exporting = false;
+
+    // Write the blob to disk (nodeIntegration gives us fs directly).
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const dest = path.join(os.homedir(), 'Downloads', 'snap-it-beat-' + stamp + '.webm');
+      fs.writeFileSync(dest, buffer);
+      console.log('[audioEngine] exported beat to', dest);
+      return dest;
+    } catch (err) {
+      console.error('[audioEngine] export failed to write file', err);
+      return null;
+    }
+  }
+
   return {
     init: init,
     previewSample: previewSample,
@@ -195,6 +258,8 @@ const audioEngine = (function () {
     play: play,
     stop: stop,
     onStep: onStep,
+    clearAllSteps: clearAllSteps,
+    exportLoop: exportLoop,
     STEP_COUNT: STEP_COUNT,
   };
 })();

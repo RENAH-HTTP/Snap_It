@@ -57,4 +57,3 @@ Open a live room and invite other players. Each player triggers items from their
 4. Open your **Collection** to hear what you just captured
 5. Check the **Map** for nearby hot zones
 6. Head out, scan more, and start a **Jam Session** with friends
- 

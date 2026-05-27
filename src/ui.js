@@ -27,6 +27,13 @@ const ui = (function () {
     setupTabs();
     setupScanTab();
     setupSequencerTransport();
+
+    // Start the live camera + object detection.
+    Vision.start(
+      document.getElementById('camera-video'),
+      document.getElementById('camera-canvas'),
+      document.getElementById('vision-status')
+    );
     renderLibrary();
     renderSequencer();
 
@@ -273,6 +280,14 @@ const ui = (function () {
       clearPlayhead();
     });
 
+    // Clear all steps across every track.
+    document.getElementById('clear-button').addEventListener('click', function () {
+      audioEngine.clearAllSteps();
+      document.querySelectorAll('.step.on').forEach(function (cell) {
+        cell.classList.remove('on');
+      });
+    });
+
     const bpm = document.getElementById('bpm-slider');
     const bpmValue = document.getElementById('bpm-value');
     bpm.addEventListener('input', function () {
@@ -280,8 +295,42 @@ const ui = (function () {
       bpmValue.textContent = used;
     });
 
+    // EXPORT (the Roland "record" button): capture one bar to a file.
+    const exportBtn = document.getElementById('export-button');
+    exportBtn.addEventListener('click', async function () {
+      if (exportBtn.classList.contains('recording')) return; // already capturing
+      exportBtn.classList.add('recording');
+      console.log('[ui] exporting beat…');
+      const dest = await audioEngine.exportLoop();
+      exportBtn.classList.remove('recording');
+      if (dest) {
+        showToast('Exported to ' + dest.split(/[\\/]/).pop());
+      } else {
+        showToast('Export failed — see console');
+      }
+    });
+
     // Reveal modal close button.
     document.getElementById('reveal-close').addEventListener('click', hideReveal);
+  }
+
+  // Brief, self-dismissing status message (used by Export).
+  function showToast(message) {
+    let toast = document.getElementById('snapit-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'snapit-toast';
+      toast.style.cssText =
+        'position:fixed;bottom:22px;left:50%;transform:translateX(-50%);' +
+        'background:#efeee9;color:#1b1b18;border:1px solid #1b1b18;border-radius:3px;' +
+        'padding:10px 18px;font:600 13px Bahnschrift,system-ui,sans-serif;letter-spacing:.04em;' +
+        'z-index:50;';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function () { toast.style.opacity = '0'; toast.style.transition = 'opacity .4s'; }, 3200);
   }
 
   return { init: init };
