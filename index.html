@@ -2,77 +2,180 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>SoundHunter</title>
-  <link rel="stylesheet" href="src/ui/styles.css" />
+  <title>Snap-It</title>
+  <style>
+    /* Bare-minimum styling — just enough to be usable. Polish comes later. */
+    :root {
+      --bg: #14161c;
+      --panel: #1e222b;
+      --panel-2: #272c38;
+      --accent: #4cc2ff;
+      --on: #ffce54;
+      --playhead: #ff6b6b;
+      --text: #e7ebf0;
+      --muted: #8b93a3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header { padding: 14px 20px 0; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 2px 0 10px; color: var(--muted); font-size: 13px; }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #000; }
+    .tab-button {
+      background: transparent; border: none; color: var(--muted);
+      padding: 10px 16px; font-size: 14px; cursor: pointer; border-radius: 6px 6px 0 0;
+    }
+    .tab-button:hover { color: var(--text); }
+    .tab-button.active { background: var(--panel); color: var(--text); font-weight: 600; }
+
+    .tab-panel { display: none; padding: 20px; }
+    .tab-panel.active { display: block; }
+
+    button {
+      background: var(--panel-2); color: var(--text); border: 1px solid #000;
+      border-radius: 6px; padding: 7px 10px; cursor: pointer; font-size: 13px;
+    }
+    button:hover { background: #313847; }
+    select { padding: 7px; border-radius: 6px; background: var(--panel-2); color: var(--text); border: 1px solid #000; }
+
+    /* Scan tab */
+    .scan-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+
+    /* Library grid */
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px; margin-top: 10px;
+    }
+    .card {
+      background: var(--panel); border-radius: 10px; padding: 12px;
+      display: flex; flex-direction: column; gap: 6px; min-height: 120px;
+    }
+    .card.locked {
+      align-items: center; justify-content: center; color: var(--muted);
+      background: repeating-linear-gradient(45deg, #1a1d25, #1a1d25 8px, #1e222b 8px, #1e222b 16px);
+    }
+    .card-locked-mark { font-size: 34px; font-weight: 700; }
+    .card-name { font-weight: 600; font-size: 15px; }
+    .card-sub { color: var(--muted); font-size: 12px; }
+    .card.unlocked button { margin-top: auto; }
+
+    /* Sequencer */
+    .transport { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+    .transport input[type=range] { width: 200px; }
+    .track-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+      background: var(--panel); padding: 8px; border-radius: 8px;
+    }
+    .track-label { width: 130px; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+    .track-steps { display: flex; gap: 4px; flex: 1; }
+    .step {
+      width: 26px; height: 30px; padding: 0; border-radius: 4px;
+      background: var(--panel-2); border: 1px solid #000;
+    }
+    .step.beat-start { border-left: 2px solid var(--accent); }
+    .step.on { background: var(--on); }
+    .step.playhead { outline: 2px solid var(--playhead); outline-offset: -2px; }
+    .track-mute.active { background: var(--accent); color: #06121b; font-weight: 600; }
+    .track-remove { flex-shrink: 0; }
+    .empty { color: var(--muted); }
+
+    /* Reveal modal */
+    .modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      align-items: center; justify-content: center;
+    }
+    .modal.active { display: flex; }
+    .modal-card {
+      background: var(--panel); padding: 28px 36px; border-radius: 14px;
+      text-align: center; border: 1px solid var(--accent);
+    }
+    .modal-card h2 { margin: 0 0 8px; color: var(--muted); font-size: 15px; font-weight: 500; }
+    .modal-card .name { font-size: 26px; font-weight: 700; color: var(--on); margin-bottom: 18px; }
+  </style>
 </head>
 <body>
-  <!--
-    This is the main UI of the app. It's split into five panels, one for each
-    big concept in SoundHunter. Right now they're empty placeholders — each
-    module under /src will progressively wire its logic into the matching panel.
-  -->
-
-  <header class="app-header">
-    <h1>SoundHunter</h1>
-    <p class="tagline">Scan the world. Jam together.</p>
+  <header>
+    <h1>Snap-It</h1>
+    <p>Scan objects to unlock drum samples, then build a beat.</p>
   </header>
 
-  <main class="grid">
+  <!-- Tab bar -->
+  <nav class="tab-bar">
+    <button class="tab-button active" data-tab="scan">Scan</button>
+    <button class="tab-button" data-tab="library">Library</button>
+    <button class="tab-button" data-tab="sequencer">Sequencer</button>
+  </nav>
 
-    <!-- 1. Camera feed: shows live webcam input used for object detection. -->
-    <section id="camera-panel" class="panel">
-      <h2>Camera</h2>
-      <video id="camera-feed" autoplay muted playsinline></video>
-      <button id="start-camera-btn">Start Camera</button>
-    </section>
+  <!-- SCAN TAB: placeholder for the camera. Simulate a scan for now. -->
+  <section id="tab-scan" class="tab-panel active">
+    <p>Camera view goes here later. For now, simulate scanning an object:</p>
+    <div class="scan-row">
+      <select id="scan-select"></select>
+      <button id="scan-button">Simulate scan</button>
+    </div>
+  </section>
 
-    <!-- 2. Detected objects: list of items the vision model currently sees. -->
-    <section id="detection-panel" class="panel">
-      <h2>Detected Objects</h2>
-      <ul id="detected-list">
-        <li class="empty">Nothing detected yet.</li>
-      </ul>
-    </section>
+  <!-- LIBRARY TAB: every sample, locked (silhouette) or unlocked (playable). -->
+  <section id="tab-library" class="tab-panel">
+    <p>Your collection. Scan more objects to fill in the silhouettes.</p>
+    <div id="library-grid" class="grid"></div>
+  </section>
 
-    <!-- 3. Tempo controls: master BPM + per-object tempo multipliers. -->
-    <section id="tempo-panel" class="panel">
-      <h2>Tempo</h2>
-      <label for="master-bpm">Master BPM</label>
-      <input type="range" id="master-bpm" min="40" max="200" value="120" />
-      <span id="master-bpm-value">120</span>
-      <button id="play-btn">Play</button>
-      <button id="stop-btn">Stop</button>
-    </section>
+  <!-- SEQUENCER TAB: the step grid + transport. -->
+  <section id="tab-sequencer" class="tab-panel">
+    <div class="transport">
+      <button id="play-button">▶ Play</button>
+      <button id="stop-button">■ Stop</button>
+      <label for="bpm-slider">BPM</label>
+      <input type="range" id="bpm-slider" min="60" max="180" value="120" />
+      <span id="bpm-value">120</span>
+    </div>
+    <div id="sequencer-tracks"></div>
+  </section>
 
-    <!-- 4. Card collection: every scanned object becomes a card stored here. -->
-    <section id="collection-panel" class="panel">
-      <h2>Collection</h2>
-      <div id="card-grid">
-        <p class="empty">No cards yet — scan something!</p>
-      </div>
-    </section>
-
-    <!-- 5. Network panel: host or join a jam session over the local network. -->
-    <section id="network-panel" class="panel">
-      <h2>Network</h2>
-      <div class="network-controls">
-        <button id="host-btn">Host Session</button>
-        <button id="join-btn">Join Session</button>
-        <input type="text" id="host-address" placeholder="host IP (e.g. 192.168.1.10)" />
-      </div>
-      <p id="network-status">Offline</p>
-    </section>
-
-  </main>
+  <!-- Unlock reveal modal -->
+  <div id="reveal-modal" class="modal">
+    <div class="modal-card">
+      <h2 id="reveal-title">You unlocked:</h2>
+      <div class="name" id="reveal-name"></div>
+      <button id="reveal-close">Nice!</button>
+    </div>
+  </div>
 
   <!--
-    Each module is loaded as a separate script so the concerns stay split.
-    They use require() because nodeIntegration is enabled in main.js.
+    Load Tone.js (a UMD bundle). With Electron's nodeIntegration enabled, the
+    CommonJS globals `module`/`exports` exist, so the bundle would otherwise
+    attach itself to module.exports instead of window. We hide those two globals
+    just for this one script so the bundle takes its browser branch and defines
+    window.Tone, then we restore them. (Verified: require('tone') fails here
+    because the package ships as ESM, so this is the reliable path.)
   -->
-  <script src="src/vision/vision.js"></script>
-  <script src="src/audio/audio.js"></script>
-  <script src="src/data/collection.js"></script>
-  <script src="src/multiplayer/network.js"></script>
-  <script src="src/ui/app.js"></script>
+  <script>
+    window.__savedModule = window.module;
+    window.__savedExports = window.exports;
+    window.module = undefined;
+    window.exports = undefined;
+  </script>
+  <script src="node_modules/tone/build/Tone.js"></script>
+  <script>
+    window.module = window.__savedModule;
+    window.exports = window.__savedExports;
+    delete window.__savedModule;
+    delete window.__savedExports;
+    console.log('[bootstrap] Tone loaded:', typeof window.Tone);
+  </script>
+
+  <!-- App modules. Plain scripts that attach to window; load order matters. -->
+  <script src="src/cameraStub.js"></script>
+  <script src="src/library.js"></script>
+  <script src="src/audioEngine.js"></script>
+  <script src="src/ui.js"></script>
 </body>
 </html>

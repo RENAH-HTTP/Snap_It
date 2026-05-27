@@ -1,0 +1,17 @@
+{
+  "cup":        { "sampleFile": "kick_01.wav",   "displayName": "Deep Kick" },
+  "mug":        { "sampleFile": "kick_02.wav",   "displayName": "Punchy Kick" },
+  "book":       { "sampleFile": "snare_01.wav",  "displayName": "Tight Snare" },
+  "box":        { "sampleFile": "snare_02.wav",  "displayName": "Fat Snare" },
+  "bottle":     { "sampleFile": "hat_01.wav",    "displayName": "Closed Hat" },
+  "plant":      { "sampleFile": "hat_02.wav",    "displayName": "Open Hat" },
+  "phone":      { "sampleFile": "clap_01.wav",   "displayName": "Studio Clap" },
+  "laptop":     { "sampleFile": "perc_01.wav",   "displayName": "Wood Block" },
+  "mouse":      { "sampleFile": "rim_01.wav",    "displayName": "Rimshot" },
+  "keyboard":   { "sampleFile": "tom_01.wav",    "displayName": "Low Tom" },
+  "pen":        { "sampleFile": "tom_02.wav",    "displayName": "High Tom" },
+  "headphones": { "sampleFile": "cymbal_01.wav", "displayName": "Crash Cymbal" },
+  "can":        { "sampleFile": "perc_03.wav",   "displayName": "Tin Tap" },
+  "shoe":       { "sampleFile": "perc_04.wav",   "displayName": "Stomp" },
+  "_default":   { "sampleFile": "perc_02.wav",   "displayName": "Mystery Hit" }
+}

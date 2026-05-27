@@ -16,7 +16,7 @@ function createWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    title: 'SoundHunter',
+    title: 'Snap-It',
     webPreferences: {
       // nodeIntegration + contextIsolation:false keeps things simple for
       // beginners — the renderer can use require() directly. For a

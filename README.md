@@ -58,4 +58,3 @@ Open a live room and invite other players. Each player triggers items from their
 5. Check the **Map** for nearby hot zones
 6. Head out, scan more, and start a **Jam Session** with friends
  
-asd

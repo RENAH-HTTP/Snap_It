@@ -1,7 +1,7 @@
 {
-  "name": "soundhunter",
+  "name": "snap-it",
   "version": "0.1.0",
-  "description": "Turn objects around you into a live, networked loop. Scan objects with your webcam, assign sounds, and jam together over the network.",
+  "description": "Scan physical objects to unlock drum samples, build a library, and make beats in a step sequencer.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
