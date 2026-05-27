@@ -4,140 +4,269 @@
   <meta charset="UTF-8" />
   <title>Snap-It</title>
   <style>
-    /* Bare-minimum styling — just enough to be usable. Polish comes later. */
+    /* ------------------------------------------------------------------ */
+    /* Snap-It UI — "hardware plugin" look.                                */
+    /*   chrome + glossy top-edge highlights + top toolbar : Current       */
+    /*   gold = values / unlock                            : SubLab        */
+    /*   each tab keeps its own colour: scan=green library=orange seq=purple */
+    /* ------------------------------------------------------------------ */
     :root {
-      --bg: #14161c;
-      --panel: #1e222b;
-      --panel-2: #272c38;
-      --accent: #4cc2ff;
-      --on: #ffce54;
-      --playhead: #ff6b6b;
-      --text: #e7ebf0;
-      --muted: #8b93a3;
+      --bg:          #0c0d14;
+      --bg-2:        #181b26;
+      --panel:       #1c2030;
+      --panel-inset: #13151e;
+      --edge:        #3a4159;
+      --edge-soft:   #2a3040;
+      --text:        #e8eaf2;
+      --muted:       #7d8398;
+      --gold:        #f5c518;   /* universal "value / unlock" colour */
+      --scan:        #38d39f;   /* tab 1 */
+      --library:     #f0922b;   /* tab 2 */
+      --sequencer:   #b96be0;   /* tab 3 */
+      --playhead:    #ffffff;
+      --accent:      var(--scan); /* overridden per active panel */
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
+      font-family: "Segoe UI", system-ui, Roboto, sans-serif;
+      background:
+        radial-gradient(1200px 500px at 50% -10%, #1a1e2c 0%, transparent 60%),
+        linear-gradient(180deg, #11131c 0%, var(--bg) 70%);
       color: var(--text);
+      -webkit-font-smoothing: antialiased;
     }
-    header { padding: 14px 20px 0; }
-    header h1 { margin: 0; font-size: 22px; }
-    header p { margin: 2px 0 10px; color: var(--muted); font-size: 13px; }
 
-    /* Tabs */
-    .tab-bar { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #000; }
+    /* ---- top toolbar (Current-style strip holding the tabs) ---- */
+    .toolbar {
+      display: flex; align-items: stretch; gap: 26px;
+      padding: 0 22px; height: 56px;
+      background: linear-gradient(180deg, #262b3d 0%, #181b27 55%, #14161f 100%);
+      border-bottom: 1px solid #000;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 3px 12px rgba(0,0,0,.55);
+    }
+    .wordmark {
+      display: flex; align-items: center;
+      font-size: 24px; font-weight: 800; letter-spacing: -0.6px;
+      text-shadow: 0 1px 0 rgba(0,0,0,.6);
+    }
+    .wordmark span { color: var(--gold); }
+
+    .tab-bar { display: flex; gap: 2px; align-items: stretch; }
     .tab-button {
-      background: transparent; border: none; color: var(--muted);
-      padding: 10px 16px; font-size: 14px; cursor: pointer; border-radius: 6px 6px 0 0;
+      background: transparent; border: none; cursor: pointer;
+      padding: 0 20px; font-size: 14px; font-weight: 600;
+      letter-spacing: .04em; text-transform: lowercase;
+      border-bottom: 3px solid transparent; opacity: .5;
+      transition: opacity .12s, background .12s;
     }
-    .tab-button:hover { color: var(--text); }
-    .tab-button.active { background: var(--panel); color: var(--text); font-weight: 600; }
+    .tab-button:hover { opacity: .85; background: rgba(255,255,255,.03); }
+    .tab-button.active {
+      opacity: 1; border-bottom-color: currentColor;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 70%);
+      text-shadow: 0 0 14px currentColor;          /* the "lit" highlight */
+    }
+    .tab-button[data-tab="scan"]      { color: var(--scan); }
+    .tab-button[data-tab="library"]   { color: var(--library); }
+    .tab-button[data-tab="sequencer"] { color: var(--sequencer); }
 
-    .tab-panel { display: none; padding: 20px; }
+    .subtitle {
+      margin-left: auto; align-self: center;
+      color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    }
+
+    /* ---- panels (glossy, lit top edge) ---- */
+    .tab-panel { display: none; padding: 22px 24px; }
     .tab-panel.active { display: block; }
+    #tab-scan      { --accent: var(--scan); }
+    #tab-library   { --accent: var(--library); }
+    #tab-sequencer { --accent: var(--sequencer); }
 
-    button {
-      background: var(--panel-2); color: var(--text); border: 1px solid #000;
-      border-radius: 6px; padding: 7px 10px; cursor: pointer; font-size: 13px;
+    .panel {
+      background: linear-gradient(180deg, #262b3d 0%, #1d2130 7%, #1a1e2c 100%);
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.09),      /* top highlight */
+        inset 0 0 0 1px rgba(255,255,255,.015),
+        0 16px 40px rgba(0,0,0,.5);
     }
-    button:hover { background: #313847; }
-    select { padding: 7px; border-radius: 6px; background: var(--panel-2); color: var(--text); border: 1px solid #000; }
+    .panel-title {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: lowercase;
+      color: var(--accent); margin: 0 0 4px;
+    }
+    .panel-title::before {
+      content: ""; width: 9px; height: 9px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 12px var(--accent);
+    }
+    .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
 
-    /* Scan tab */
-    .scan-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+    /* ---- generic controls (with top sheen) ---- */
+    button {
+      background: linear-gradient(180deg, #2a3042 0%, #1c2030 100%);
+      color: var(--text); border: 1px solid var(--edge); border-radius: 8px;
+      padding: 8px 12px; cursor: pointer; font: inherit; font-size: 13px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+      transition: border-color .12s, background .12s, color .12s, box-shadow .12s;
+    }
+    button:hover { border-color: var(--accent); }
+    select {
+      padding: 9px 10px; border-radius: 8px; font: inherit; font-size: 13px;
+      background: var(--panel-inset); color: var(--text); border: 1px solid var(--edge);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.5);
+    }
+    select:focus { outline: none; border-color: var(--accent); }
 
-    /* Library grid */
+    /* ---- scan tab ---- */
+    .scan-row { display: flex; gap: 10px; align-items: center; }
+    #scan-button {
+      border-color: var(--accent); color: var(--accent); font-weight: 600;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+    #scan-button:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, #2a3042), #1c2030); }
+
+    /* ---- library grid ---- */
     .grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 12px; margin-top: 10px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 12px;
     }
     .card {
-      background: var(--panel); border-radius: 10px; padding: 12px;
-      display: flex; flex-direction: column; gap: 6px; min-height: 120px;
+      background: linear-gradient(180deg, #1c2030 0%, #15171f 100%);
+      border: 1px solid var(--edge-soft); border-radius: 12px; padding: 13px;
+      min-height: 134px; display: flex; flex-direction: column; gap: 6px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .card.unlocked {
+      border-left: 3px solid var(--accent);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 16px color-mix(in srgb, var(--accent) 14%, transparent);
     }
     .card.locked {
       align-items: center; justify-content: center; color: var(--muted);
-      background: repeating-linear-gradient(45deg, #1a1d25, #1a1d25 8px, #1e222b 8px, #1e222b 16px);
+      border-style: dashed;
+      background: repeating-linear-gradient(45deg, #121420, #121420 9px, #161824 9px, #161824 18px);
     }
-    .card-locked-mark { font-size: 34px; font-weight: 700; }
-    .card-name { font-weight: 600; font-size: 15px; }
-    .card-sub { color: var(--muted); font-size: 12px; }
-    .card.unlocked button { margin-top: auto; }
+    .card-locked-mark { font-size: 36px; font-weight: 800; color: #353b50; }
+    .card-name { font-weight: 700; font-size: 15px; }
+    .card-sub { color: var(--muted); font-size: 12px; letter-spacing: .03em; }
+    .card.unlocked button { font-size: 12px; padding: 6px 9px; }
+    .card.unlocked button:first-of-type { margin-top: auto; }
+    .card.unlocked button:hover { color: var(--accent); }
 
-    /* Sequencer */
-    .transport { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
-    .transport input[type=range] { width: 200px; }
+    /* ---- sequencer ---- */
+    .transport {
+      display: flex; gap: 16px; align-items: center; margin-bottom: 18px;
+      padding: 12px 16px;
+      background: linear-gradient(180deg, #1b1f2d, #15171f);
+      border: 1px solid var(--edge-soft); border-radius: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    #play-button {
+      border-color: var(--accent); color: var(--accent); font-weight: 600;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 14px color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+    #play-button:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, #2a3042), #1c2030); }
+    .transport label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .transport input[type=range] { width: 200px; accent-color: var(--gold); }
+    #bpm-value {
+      font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px;
+      color: var(--gold); min-width: 46px; display: inline-block;
+      text-shadow: 0 0 14px rgba(245,197,24,.4);
+    }
+
     .track-row {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
-      background: var(--panel); padding: 8px; border-radius: 8px;
+      display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+      background: linear-gradient(180deg, #1b1f2d, #15171f);
+      border: 1px solid var(--edge-soft); padding: 9px 12px; border-radius: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     }
-    .track-label { width: 130px; font-size: 13px; font-weight: 600; flex-shrink: 0; }
-    .track-steps { display: flex; gap: 4px; flex: 1; }
+    .track-label { width: 130px; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .track-steps { display: flex; gap: 5px; flex: 1; }
     .step {
-      width: 26px; height: 30px; padding: 0; border-radius: 4px;
-      background: var(--panel-2); border: 1px solid #000;
+      width: 26px; height: 32px; padding: 0; border-radius: 5px;
+      background: linear-gradient(180deg, #1a1d28, #101218);
+      border: 1px solid #2c3140;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+      transition: box-shadow .08s, background .08s;
     }
-    .step.beat-start { border-left: 2px solid var(--accent); }
-    .step.on { background: var(--on); }
+    .step.beat-start { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+    .step.on {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, #ffffff), var(--accent));
+      border-color: var(--accent);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 1px 0 rgba(255,255,255,.35);
+    }
     .step.playhead { outline: 2px solid var(--playhead); outline-offset: -2px; }
-    .track-mute.active { background: var(--accent); color: #06121b; font-weight: 600; }
-    .track-remove { flex-shrink: 0; }
+    .track-mute, .track-remove { flex-shrink: 0; font-size: 12px; }
+    .track-mute.active { background: var(--gold); color: #1a1500; border-color: var(--gold); font-weight: 700; }
+    .track-remove:hover { border-color: #e0564f; color: #e0564f; }
     .empty { color: var(--muted); }
 
-    /* Reveal modal */
+    /* ---- reveal modal ---- */
     .modal {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.66);
       align-items: center; justify-content: center;
     }
     .modal.active { display: flex; }
     .modal-card {
-      background: var(--panel); padding: 28px 36px; border-radius: 14px;
-      text-align: center; border: 1px solid var(--accent);
+      background: linear-gradient(180deg, #262b3d, #1a1e2c);
+      padding: 30px 42px; border-radius: 16px; text-align: center;
+      border: 1px solid var(--gold);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 46px rgba(245,197,24,.28);
+      animation: pop .22s ease-out;
     }
-    .modal-card h2 { margin: 0 0 8px; color: var(--muted); font-size: 15px; font-weight: 500; }
-    .modal-card .name { font-size: 26px; font-weight: 700; color: var(--on); margin-bottom: 18px; }
+    @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-card h2 { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .1em; }
+    .modal-card .name { font-size: 28px; font-weight: 800; color: var(--gold); margin-bottom: 20px; text-shadow: 0 0 18px rgba(245,197,24,.4); }
+    #reveal-close { border-color: var(--gold); color: var(--gold); padding: 9px 22px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Snap-It</h1>
-    <p>Scan objects to unlock drum samples, then build a beat.</p>
-  </header>
-
-  <!-- Tab bar -->
-  <nav class="tab-bar">
-    <button class="tab-button active" data-tab="scan">Scan</button>
-    <button class="tab-button" data-tab="library">Library</button>
-    <button class="tab-button" data-tab="sequencer">Sequencer</button>
-  </nav>
+  <!-- Top toolbar: wordmark + the three colour-coded tabs (Current-style). -->
+  <div class="toolbar">
+    <div class="wordmark">snap<span>-it</span></div>
+    <nav class="tab-bar">
+      <button class="tab-button active" data-tab="scan">scan</button>
+      <button class="tab-button" data-tab="library">library</button>
+      <button class="tab-button" data-tab="sequencer">sequencer</button>
+    </nav>
+    <div class="subtitle">scan &middot; collect &middot; sequence</div>
+  </div>
 
   <!-- SCAN TAB: placeholder for the camera. Simulate a scan for now. -->
   <section id="tab-scan" class="tab-panel active">
-    <p>Camera view goes here later. For now, simulate scanning an object:</p>
-    <div class="scan-row">
-      <select id="scan-select"></select>
-      <button id="scan-button">Simulate scan</button>
+    <div class="panel">
+      <p class="panel-title">scan</p>
+      <p class="hint">Camera view goes here later. For now, simulate scanning an object:</p>
+      <div class="scan-row">
+        <select id="scan-select"></select>
+        <button id="scan-button">simulate scan</button>
+      </div>
     </div>
   </section>
 
   <!-- LIBRARY TAB: every sample, locked (silhouette) or unlocked (playable). -->
   <section id="tab-library" class="tab-panel">
-    <p>Your collection. Scan more objects to fill in the silhouettes.</p>
-    <div id="library-grid" class="grid"></div>
+    <div class="panel">
+      <p class="panel-title">library</p>
+      <p class="hint">Your collection. Scan more objects to fill in the silhouettes.</p>
+      <div id="library-grid" class="grid"></div>
+    </div>
   </section>
 
   <!-- SEQUENCER TAB: the step grid + transport. -->
   <section id="tab-sequencer" class="tab-panel">
-    <div class="transport">
-      <button id="play-button">▶ Play</button>
-      <button id="stop-button">■ Stop</button>
-      <label for="bpm-slider">BPM</label>
-      <input type="range" id="bpm-slider" min="60" max="180" value="120" />
-      <span id="bpm-value">120</span>
+    <div class="panel">
+      <p class="panel-title">sequencer</p>
+      <div class="transport">
+        <button id="play-button">&#9654; play</button>
+        <button id="stop-button">&#9632; stop</button>
+        <label for="bpm-slider">bpm</label>
+        <input type="range" id="bpm-slider" min="60" max="180" value="120" />
+        <span id="bpm-value">120</span>
+      </div>
+      <div id="sequencer-tracks"></div>
     </div>
-    <div id="sequencer-tracks"></div>
   </section>
 
   <!-- Unlock reveal modal -->
