@@ -27,6 +27,13 @@ const ui = (function () {
     setupTabs();
     setupScanTab();
     setupSequencerTransport();
+
+    // Start the live camera + object detection.
+    Vision.start(
+      document.getElementById('camera-video'),
+      document.getElementById('camera-canvas'),
+      document.getElementById('vision-status')
+    );
     renderLibrary();
     renderSequencer();
 

@@ -134,6 +134,26 @@
     /* ---------------------------------------------------------------- */
     .scan-row { display: flex; gap: 12px; align-items: center; }
 
+    .camera-wrap {
+      position: relative; display: inline-block;
+      border: 1px solid var(--ink); border-radius: 4px;
+      overflow: hidden; background: var(--ink);
+      max-width: 100%; margin-bottom: 12px;
+    }
+    .camera-wrap video { display: block; max-width: 100%; height: auto; }
+    .camera-wrap canvas {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; pointer-events: none;
+    }
+    .vision-status {
+      font-size: 13px; color: var(--muted); letter-spacing: .04em;
+      margin: 0 0 14px;
+    }
+    .scan-divider {
+      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--muted); margin: 14px 0 10px; font-weight: 700;
+    }
+
     /* ---------------------------------------------------------------- */
     /* LIBRARY TAB — sound "cartridges"                                 */
     /* ---------------------------------------------------------------- */
@@ -272,10 +292,16 @@
           <span class="cc">Computer Controlled</span>
           <span class="model">SNAP</span>
         </div>
-        <p class="hint">Camera view goes here later. For now, simulate scanning an object to unlock its sound:</p>
+        <p class="hint">Point the camera at any object. It will be detected and its sample unlocked automatically.</p>
+        <div class="camera-wrap">
+          <video id="camera-video" autoplay muted playsinline width="480" height="360"></video>
+          <canvas id="camera-canvas"></canvas>
+        </div>
+        <p id="vision-status" class="vision-status">Initialising…</p>
+        <div class="scan-divider">Manual scan</div>
         <div class="scan-row">
           <select id="scan-select" class="hw"></select>
-          <button id="scan-button" class="hw yellow">Simulate Scan</button>
+          <button id="scan-button" class="hw yellow">Scan</button>
         </div>
       </div>
     </section>
@@ -358,8 +384,29 @@
     console.log('[bootstrap] Tone loaded:', typeof window.Tone);
   </script>
 
+  <!--
+    Load TensorFlow.js + COCO-SSD the same way Tone.js is loaded above:
+    hide CommonJS globals so the UMD bundles bind to window instead of module.exports.
+  -->
+  <script>
+    window.__savedModule2  = window.module;
+    window.__savedExports2 = window.exports;
+    window.module  = undefined;
+    window.exports = undefined;
+  </script>
+  <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js"></script>
+  <script>
+    window.module  = window.__savedModule2;
+    window.exports = window.__savedExports2;
+    delete window.__savedModule2;
+    delete window.__savedExports2;
+    console.log('[bootstrap] tf loaded:', typeof window.tf, '| cocoSsd:', typeof window.cocoSsd);
+  </script>
+
   <!-- App modules. Plain scripts that attach to window; load order matters. -->
   <script src="src/cameraStub.js"></script>
+  <script src="src/vision/vision.js"></script>
   <script src="src/library.js"></script>
   <script src="src/audioEngine.js"></script>
   <script src="src/ui.js"></script>
