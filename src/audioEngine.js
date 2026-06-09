@@ -25,6 +25,8 @@ const audioEngine = (function () {
   const STEP_COUNT = 16; // one bar of 16th notes
 
   const players = {};       // objectType -> Tone.Player
+  const envs = {};          // objectType -> Tone.AmplitudeEnvelope (real ADSR)
+  const settings = {};      // objectType -> { attack, decay, sustain, release, cents }
   const tracks = [];        // array of track objects (see header)
   let nextTrackId = 1;      // simple incrementing id
   let sequence = null;      // the Tone.Sequence driving the loop
@@ -32,6 +34,8 @@ const audioEngine = (function () {
   let audioStarted = false; // has the AudioContext been unlocked by a gesture?
   let recorder = null;      // Tone.Recorder used by the Export button
   let exporting = false;    // are we currently capturing audio?
+  let analyser = null;      // Tone.Analyser tapping the master (oscilloscope)
+  let sampleLoadedCb = null;// optional UI callback fired when a sample finishes loading
 
   // ---- setup -----------------------------------------------------------------
 
@@ -43,15 +47,38 @@ const audioEngine = (function () {
 
     Object.keys(map).forEach(function (objectType) {
       const url = 'samples/' + map[objectType].sampleFile;
+
+      // Per-sample defaults. The envelope basically passes the sample through
+      // (instant attack, full sustain) until the user shapes it on the card.
+      settings[objectType] = { attack: 0.005, decay: 0.20, sustain: 1.0, release: 0.30, cents: 0 };
+
+      // player -> amplitude envelope -> destination, so ADSR actually shapes it.
+      const env = new Tone.AmplitudeEnvelope({
+        attack: settings[objectType].attack,
+        decay: settings[objectType].decay,
+        sustain: settings[objectType].sustain,
+        release: settings[objectType].release,
+      }).toDestination();
+      envs[objectType] = env;
+
       players[objectType] = new Tone.Player({
         url: url,
-        onload: function () { console.log('[audioEngine] loaded', url); },
+        onload: function () {
+          console.log('[audioEngine] loaded', url);
+          // Let the UI know it can now draw this sample's waveform.
+          if (sampleLoadedCb) sampleLoadedCb(objectType);
+        },
         onerror: function () {
           console.warn('[audioEngine] missing sample:', url,
             '- drop the WAV into /samples to hear it');
         },
-      }).toDestination();
+      }).connect(env);
     });
+
+    // Tap the master output for the sequencer oscilloscope. The analyser only
+    // reads the signal (it isn't routed onward), so it never affects playback.
+    analyser = new Tone.Analyser('waveform', 1024);
+    Tone.getDestination().connect(analyser);
 
     buildSequence();
     Tone.getTransport().bpm.value = 120;
@@ -71,10 +98,9 @@ const audioEngine = (function () {
         tracks.forEach(function (track) {
           if (track.muted) return;
           if (!track.steps[step]) return;
-          const player = players[track.objectType];
-          if (player && player.loaded) {
-            player.start(time); // schedule precisely on the audio clock
-          }
+          // Each step can carry its own pitch offset (semitones -> cents).
+          const extraCents = (track.stepPitch[step] || 0) * 100;
+          triggerSample(track.objectType, time, extraCents);
         });
 
         // Tell the UI which step is playing, synced to the visual frame.
@@ -107,15 +133,45 @@ const audioEngine = (function () {
     return tracks.find(function (t) { return t.id === trackId; });
   }
 
+  function centsToRate(cents) {
+    return Math.pow(2, cents / 1200);
+  }
+
+  // Fire a sample once with its current ADSR + tune, plus any extra pitch
+  // (cents) for this hit. `time` is optional (omit for "now", e.g. preview).
+  function triggerSample(objectType, time, extraCents) {
+    const key = library.resolveKey(objectType);
+    const player = players[key];
+    const env = envs[key];
+    const s = settings[key];
+    if (!player || !player.loaded) return;
+
+    // Use an explicit time so rapid retriggers always advance on the clock.
+    const t = (time === undefined) ? Tone.now() : time;
+
+    const cents = (s ? s.cents : 0) + (extraCents || 0);
+    player.playbackRate = centsToRate(cents);
+
+    // Hold the envelope open for the (rate-adjusted) length of the sample.
+    const dur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
+    // triggerAttackRelease retriggers cleanly on its own (it cancels and holds
+    // internally), so the ADSR re-shapes every hit — no manual cancel needed.
+    if (env) env.triggerAttackRelease(dur, t);
+
+    // Stop any current playback then start fresh. stop() throws if not playing,
+    // start() throws if already started — both are fine to ignore.
+    try { player.stop(t); } catch (e) {}
+    try { player.start(t); } catch (e) {}
+  }
+
   // ---- public actions --------------------------------------------------------
 
   // Play a single sample once (used by the library preview button).
   async function previewSample(objectType) {
     await ensureAudioStarted();
     const key = library.resolveKey(objectType);
-    const player = players[key];
-    if (player && player.loaded) {
-      player.start();
+    if (players[key] && players[key].loaded) {
+      triggerSample(key);
       console.log('[audioEngine] preview', key);
     } else {
       console.warn('[audioEngine] cannot preview', key, '- sample not loaded');
@@ -129,6 +185,7 @@ const audioEngine = (function () {
       id: nextTrackId++,
       objectType: key,
       steps: new Array(STEP_COUNT).fill(false),
+      stepPitch: new Array(STEP_COUNT).fill(0), // per-step pitch offset, semitones
       muted: false,
     };
     tracks.push(track);
@@ -186,6 +243,75 @@ const audioEngine = (function () {
     stepCallback = callback;
   }
 
+  // Register a callback(objectType) fired whenever a sample finishes loading,
+  // so the UI can (re)draw that sample's waveform once its buffer is ready.
+  function onSampleLoaded(callback) {
+    sampleLoadedCb = callback;
+  }
+
+  // ---- per-sample sound shaping (driven by the library card controls) --------
+
+  // Current { attack, decay, sustain, release, cents } for a sample (a copy).
+  function getSampleSettings(objectType) {
+    const s = settings[library.resolveKey(objectType)];
+    return s ? Object.assign({}, s) : null;
+  }
+
+  // Set one ADSR field (attack/decay/sustain/release) and apply it live.
+  function setSampleEnv(objectType, field, value) {
+    const key = library.resolveKey(objectType);
+    const s = settings[key], env = envs[key];
+    if (!s || !env) return;
+    s[field] = value;
+    env[field] = value;
+  }
+
+  // Tune the sample, clamped to ±4800 cents (±48 semitones).
+  function setSampleCents(objectType, cents) {
+    const key = library.resolveKey(objectType);
+    if (!settings[key]) return;
+    settings[key].cents = Math.max(-4800, Math.min(4800, Math.round(cents)));
+    return settings[key].cents;
+  }
+
+  // ---- per-step pitch (sequencer) --------------------------------------------
+
+  function setStepPitch(trackId, stepIndex, semitones) {
+    const track = findTrack(trackId);
+    if (!track) return 0;
+    const clamped = Math.max(-12, Math.min(12, Math.round(semitones)));
+    track.stepPitch[stepIndex] = clamped;
+    return clamped;
+  }
+
+  function getStepPitch(trackId, stepIndex) {
+    const track = findTrack(trackId);
+    return track ? (track.stepPitch[stepIndex] || 0) : 0;
+  }
+
+  function getStepOn(trackId, stepIndex) {
+    const track = findTrack(trackId);
+    return track ? !!track.steps[stepIndex] : false;
+  }
+
+  // Return the raw mono sample data (Float32Array) for a sample, or null if it
+  // isn't loaded yet. Used to draw the static waveform on library cards/pads.
+  function getWaveform(objectType) {
+    const key = library.resolveKey(objectType);
+    const player = players[key];
+    if (player && player.loaded && player.buffer) {
+      const buf = player.buffer.get(); // underlying Web Audio AudioBuffer
+      if (buf && buf.length) return buf.getChannelData(0);
+    }
+    return null;
+  }
+
+  // The master-output analyser. Call analyser.getValue() each frame to read the
+  // current waveform (Float32Array in [-1, 1]) for the live oscilloscope.
+  function getAnalyser() {
+    return analyser;
+  }
+
   // Turn every step of every track off (the "Clear" button).
   function clearAllSteps() {
     tracks.forEach(function (track) {
@@ -209,7 +335,7 @@ const audioEngine = (function () {
     exporting = true;
 
     recorder = new Tone.Recorder();
-    Object.keys(players).forEach(function (key) { players[key].connect(recorder); });
+    Object.keys(envs).forEach(function (key) { envs[key].connect(recorder); });
     recorder.start();
 
     // Make sure the loop is actually running while we capture it.
@@ -222,8 +348,8 @@ const audioEngine = (function () {
     await new Promise(function (r) { setTimeout(r, barMs + 150); });
 
     const blob = await recorder.stop();
-    Object.keys(players).forEach(function (key) {
-      try { players[key].disconnect(recorder); } catch (e) {}
+    Object.keys(envs).forEach(function (key) {
+      try { envs[key].disconnect(recorder); } catch (e) {}
     });
     recorder.dispose();
     recorder = null;
@@ -258,6 +384,15 @@ const audioEngine = (function () {
     play: play,
     stop: stop,
     onStep: onStep,
+    onSampleLoaded: onSampleLoaded,
+    getWaveform: getWaveform,
+    getAnalyser: getAnalyser,
+    getSampleSettings: getSampleSettings,
+    setSampleEnv: setSampleEnv,
+    setSampleCents: setSampleCents,
+    setStepPitch: setStepPitch,
+    getStepPitch: getStepPitch,
+    getStepOn: getStepOn,
     clearAllSteps: clearAllSteps,
     exportLoop: exportLoop,
     STEP_COUNT: STEP_COUNT,
