@@ -2,265 +2,511 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Snap-It Studio</title>
+  <title>Snap-It</title>
   <style>
     /* ================================================================== */
-    /* Snap-It Studio — "Computer Controlled" paper design language:        */
-    /* flat, printed-on-paper surfaces, no gloss/gradients/3-D, near-black   */
-    /* ink on warm grey, one red spot colour, and sequencer steps drawn as   */
-    /* triangles (TB-303 Bass Line style) instead of glowing LEDs.           */
+    /* Snap-It Studio — "Neon Holo" design language:                       */
+    /* dark studio shell, fullscreen camera scanner, library rendered as   */
+    /* holographic trading cards, and a Serum-style step sequencer with    */
+    /* glowing neon steps. One purple primary + a teal/pink accent pair.    */
     /* ================================================================== */
     :root {
-      --font: "Bahnschrift", "DIN Alternate", "Oswald", "Segoe UI", system-ui, sans-serif;
+      --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-display: var(--font);
 
-      --bg:     #d7d5ce;   /* app background — plain paper grey */
-      --panel:  #e6e4dd;   /* panels / cards                   */
-      --paper:  #efeee9;   /* inputs, lightest surface         */
-      --ink:    #1b1b18;   /* near-black print colour          */
-      --ink-fg: #efeee9;   /* text on top of ink fills         */
-      --muted:  #6f6e68;
-      --line:   #b6b4ab;   /* hairline borders                 */
-      --mark:   #b3b1a8;   /* inactive step triangle           */
-      --mark-2: #97958c;   /* beat-start inactive triangle     */
-      --accent: #d8392b;   /* the one spot colour (record/LED) */
+      /* near-black, neutral, low-saturation — like a pro audio plugin */
+      --bg:      #08080a;   /* outside the frame                          */
+      --bg-2:    #0d0d10;
+      --panel:   #141417;   /* module / chrome surface                    */
+      --panel-2: #18181c;
+      --surface: #202024;   /* raised inputs                              */
+      --line:    #28282e;   /* hairline borders                          */
+      --line-2:  #34343c;
+      --text:    #d7d8dc;
+      --muted:   #74757d;
+      --faint:   #54555c;
+
+      --accent:  #7d7db8;   /* muted indigo — default accent             */
+      --accent-d:#5f5f93;
+      --teal:    #5bb8b0;   /* muted secondary                          */
+      --hot:     #c75b63;   /* muted record red                         */
+      --gold:    #c7ab6a;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0; font-family: var(--font); font-weight: 500;
-      background: var(--bg); color: var(--ink);
+      color: var(--text);
+      background: #000;
       -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* OUTER PLUGIN FRAME — the whole app sits in one rounded panel      */
+    /* ---------------------------------------------------------------- */
+    .app-frame {
+      position: relative; height: 100vh; margin: 0;
+      display: flex; flex-direction: column; overflow: hidden;
+      background: #0d0d10;
     }
 
     /* ---------------------------------------------------------------- */
     /* TOP BAR                                                          */
     /* ---------------------------------------------------------------- */
     .studio-bar {
-      display: flex; align-items: stretch; height: 60px;
-      background: var(--panel); border-bottom: 1px solid var(--ink);
+      position: relative; z-index: 30;
+      display: flex; align-items: center; height: 52px; padding: 0 16px;
+      background: #111114;
+      border-bottom: 1px solid #202026;
     }
-    .studio-logo {
-      display: flex; align-items: center; gap: 10px; padding: 0 22px;
-      font-size: 19px; letter-spacing: .01em; white-space: nowrap;
-      border-right: 1px solid var(--line);
+    /* brand cluster: wireframe globe + title stack + version */
+    .brand-cluster { display: flex; align-items: center; gap: 10px; }
+    .globe {
+      width: 26px; height: 26px; border-radius: 50%; position: relative; flex-shrink: 0;
+      background: radial-gradient(circle at 38% 32%, #34343f, #15151a 72%);
+      border: 1px solid #43434f; overflow: hidden;
     }
-    .studio-logo .mark {
-      width: 26px; height: 20px; border: 2px solid var(--ink); border-radius: 2px;
-      display: inline-block; position: relative;
+    .globe::before, .globe::after {
+      content: ""; position: absolute; inset: 3px; border-radius: 50%;
+      border: 1px solid rgba(150,152,168,.35);
     }
-    .studio-logo .mark::before {
-      content: ""; position: absolute; inset: 3px; border: 1.5px solid var(--ink);
-      border-right-color: transparent; border-bottom-color: transparent;
+    .globe::before { transform: scaleX(.45); }
+    .globe::after  { transform: scaleY(.45); }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+    .brand-title { font-size: 14px; font-weight: 600; letter-spacing: .01em; color: #ececed; }
+    .brand-sub { font-size: 8px; font-weight: 500; letter-spacing: .1em; color: var(--faint); }
+    .brand-ver {
+      align-self: center; margin-left: 3px; font-size: 8px; font-weight: 500; letter-spacing: .06em;
+      color: var(--faint); border: 1px solid var(--line); border-radius: 3px; padding: 2px 5px;
     }
-    .studio-logo b { font-weight: 700; }
-    .studio-logo .thin { color: var(--muted); font-weight: 400; }
 
-    /* device-style tabs (these ARE the app's scan/library/sequencer tabs) */
-    .device-tabs { display: flex; align-items: stretch; }
+    /* tabs — a subtle segmented control, centred like Emergent's centre control */
+    .device-tabs {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      display: flex; gap: 2px; padding: 3px;
+      background: #0c0c0f; border: 1px solid var(--line); border-radius: 7px;
+    }
     .tab-button {
-      display: flex; align-items: center; gap: 10px;
       background: transparent; border: none; cursor: pointer; color: var(--muted);
-      padding: 0 26px; font-family: var(--font); font-size: 16px; font-weight: 700;
-      letter-spacing: .12em; text-transform: uppercase;
-      border-right: 1px solid var(--line); border-bottom: 2px solid transparent;
-      transition: color .12s;
+      padding: 6px 20px; font-family: var(--font); font-size: 12px; font-weight: 500;
+      letter-spacing: .01em; border-radius: 5px;
+      transition: color .12s, background .12s;
     }
-    .tab-button::before { /* a small flat indicator dot */
-      content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--mark);
+    .tab-button:hover { color: var(--text); }
+    .tab-button.active { color: #fff; background: var(--surface); }
+
+    .studio-right { margin-left: auto; display: flex; align-items: center; gap: 16px; padding: 0; }
+    .bpm-wrap { display: flex; align-items: center; gap: 9px; }
+    .bpm-wrap label { font-size: 11px; letter-spacing: .01em; color: var(--muted); font-weight: 500; }
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none; height: 4px; border-radius: 4px;
+      background: var(--surface); outline: none;
     }
-    .tab-button:hover { color: var(--ink); }
-    .tab-button.active { color: var(--ink); border-bottom-color: var(--ink); }
-    .tab-button.active::before { background: var(--accent); }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 15px; height: 15px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+      border: 2px solid #2a2a30;
+    }
+    #bpm-slider { width: 104px; }
+    #bpm-value { font-size: 12px; color: var(--text); min-width: 26px; font-variant-numeric: tabular-nums; font-weight: 700; }
 
-    .studio-right { margin-left: auto; display: flex; align-items: center; gap: 16px; padding: 0 18px; }
-    .bpm-wrap { display: flex; align-items: center; gap: 10px; }
-    .bpm-wrap label { font-size: 14px; letter-spacing: .12em; color: var(--ink); }
-    #bpm-slider { width: 120px; accent-color: var(--ink); }
-    #bpm-value { font-size: 14px; color: var(--muted); min-width: 30px; font-variant-numeric: tabular-nums; }
-
-    .export-label { font-size: 12px; letter-spacing: .14em; color: var(--muted); }
+    .export-label { font-size: 11px; letter-spacing: .01em; color: var(--muted); font-weight: 500; }
     #export-button {
-      width: 32px; height: 32px; border-radius: 50%; padding: 0; cursor: pointer;
-      background: var(--accent); border: none; color: #fff; font-size: 13px;
+      width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer;
+      background: var(--hot); border: none; color: #fff; font-size: 13px;
       display: flex; align-items: center; justify-content: center;
     }
-    #export-button:hover { filter: brightness(1.05); }
+    #export-button:hover { filter: brightness(1.1); }
     #export-button.recording { animation: recpulse .9s steps(1) infinite; }
-    @keyframes recpulse { 50% { opacity: .35; } }
+    @keyframes recpulse { 50% { opacity: .3; } }
     .hamburger {
-      width: 34px; height: 34px; border-radius: 3px; background: transparent;
-      border: none; color: var(--ink); font-size: 22px; cursor: pointer; line-height: 1;
+      width: 34px; height: 34px; border-radius: 8px; background: transparent;
+      border: 1px solid transparent; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
     }
-    .hamburger:hover { background: var(--bg); }
+    .hamburger:hover { background: var(--surface); color: var(--text); }
 
     /* ---------------------------------------------------------------- */
-    /* PANELS                                                           */
+    /* STAGE / PANELS                                                   */
     /* ---------------------------------------------------------------- */
-    .stage { padding: 18px; }
-    .tab-panel { display: none; }
+    .stage { flex: 1; min-height: 0; position: relative; }
+    .tab-panel { display: none; height: 100%; }
     .tab-panel.active { display: block; }
+    /* library + sequencer scroll inside a padded, centred column */
+    #tab-library, #tab-sequencer { overflow-y: auto; }
+    .page { max-width: 1480px; margin: 0 auto; padding: 28px 28px 56px; }
 
-    .machine {
-      background: var(--panel); border: 1px solid var(--ink); border-radius: 4px;
-      padding: 20px 22px;
+    .section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .section-head h1 {
+      margin: 0; font-size: 18px; font-weight: 600; letter-spacing: .01em; color: #ececed;
     }
-    /* printed branding line: "Object Scanner ... Computer Controlled ... SNAP" */
-    .brand {
-      display: flex; align-items: baseline; gap: 14px;
-      border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 16px;
+    .section-head .tag {
+      font-size: 11px; letter-spacing: .02em; color: var(--muted); font-weight: 500;
     }
-    .brand .title { color: var(--ink); font-size: 22px; font-weight: 700; letter-spacing: .01em; }
-    .brand .cc { color: var(--muted); font-size: 13px; letter-spacing: .22em; text-transform: uppercase; }
-    .brand .model { margin-left: auto; color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: .12em; }
-    .hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+    .section-sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
 
-    /* ---- flat controls (no gloss, no shadow) ---- */
+    /* shared flat controls */
     button.hw {
-      font-family: var(--font); font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-      font-size: 12px; color: var(--ink); cursor: pointer; background: transparent;
-      border: 1px solid var(--ink); border-radius: 3px; padding: 9px 14px;
-      transition: background .1s, color .1s;
+      font-family: var(--font); font-weight: 500; letter-spacing: .01em;
+      font-size: 12px; color: var(--text); cursor: pointer; background: transparent;
+      border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 16px;
+      transition: background .12s, border-color .12s, transform .05s;
     }
-    button.hw:hover { background: var(--ink); color: var(--ink-fg); }
+    button.hw:hover { border-color: var(--muted); background: rgba(255,255,255,.03); color: #fff; }
     button.hw:active { transform: translateY(1px); }
-    button.hw.yellow { background: var(--ink); color: var(--ink-fg); }      /* primary action: filled */
-    button.hw.yellow:hover { background: var(--accent); border-color: var(--accent); }
+    button.hw.primary {
+      background: var(--surface); border-color: var(--line-2); color: var(--text);
+    }
+    button.hw.primary:hover { border-color: var(--accent); color: #fff; }
     select.hw {
-      font-family: var(--font); font-size: 14px; color: var(--ink);
-      background: var(--paper); border: 1px solid var(--ink); border-radius: 3px; padding: 9px 12px;
+      font-family: var(--font); font-size: 13px; color: var(--text);
+      background: var(--surface); border: 1px solid var(--line-2); border-radius: 5px; padding: 9px 12px;
     }
+    select.hw option { background: var(--panel); }
 
     /* ---------------------------------------------------------------- */
-    /* SCAN TAB                                                         */
+    /* SCAN TAB — camera framed in an Emergent-style panel              */
     /* ---------------------------------------------------------------- */
-    .scan-row { display: flex; gap: 12px; align-items: center; }
-
-    .camera-wrap {
-      position: relative; display: inline-block;
-      border: 1px solid var(--ink); border-radius: 4px;
-      overflow: hidden; background: var(--ink);
-      max-width: 100%; margin-bottom: 12px;
+    #tab-scan .page { height: 100%; display: flex; flex-direction: column; padding: 24px 28px; }
+    .scan-panel {
+      flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+      background: #141417; border: 1px solid #26262c; border-radius: 4px;
     }
-    .camera-wrap video { display: block; max-width: 100%; height: auto; }
-    .camera-wrap canvas {
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%; pointer-events: none;
+    /* tinted header strip, exactly like a module header */
+    .scan-head {
+      display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 11px; flex-shrink: 0;
+      background: color-mix(in srgb, var(--accent) 20%, #16161a);
+      border-bottom: 1px solid rgba(0,0,0,.45);
+    }
+    .scan-head .rec-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--hot);
+      animation: recpulse 1.4s steps(1) infinite;
+    }
+    .scan-head .ttl { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: #ececed; }
+    .scan-head .badge {
+      height: 18px; display: flex; align-items: center; padding: 0 7px;
+      background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.08); border-radius: 3px;
+      font-size: 9.5px; font-weight: 600; letter-spacing: .04em; color: #c8c9ce;
+    }
+    .scan-head .spacer { margin-left: auto; }
+    .scan-head .wave-ico { color: var(--accent); font-size: 12px; opacity: .85; }
+
+    /* camera viewport */
+    .camera-stage { position: relative; flex: 1; min-height: 0; background: #000; overflow: hidden; }
+    .camera-stage video,
+    .camera-stage canvas {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover;        /* fill the panel; canvas matches the crop */
+    }
+    .camera-stage canvas { pointer-events: none; }
+    .cam-vignette {
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(180deg, rgba(0,0,0,.4) 0%, transparent 22%, transparent 70%, rgba(0,0,0,.55) 100%);
+    }
+
+    /* muted targeting reticle */
+    .reticle {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: min(46vh, 360px); height: min(46vh, 360px); pointer-events: none;
+    }
+    .reticle span {
+      position: absolute; width: 30px; height: 30px;
+      border: 1.5px solid rgba(220,221,228,.7);
+    }
+    .reticle span:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+    .reticle span:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+    .reticle span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+    .reticle span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+    .reticle::after {
+      content: ""; position: absolute; left: 6%; right: 6%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(125,125,184,.8), transparent);
+      animation: sweep 2.8s ease-in-out infinite;
+    }
+    @keyframes sweep { 0%,100% { top: 8%; opacity: .2; } 50% { top: 92%; opacity: .9; } }
+
+    /* footer control strip, matching the plugin chrome */
+    .scan-foot {
+      display: flex; align-items: center; gap: 12px; padding: 9px 11px; flex-shrink: 0;
+      background: #111114; border-top: 1px solid #202026;
     }
     .vision-status {
-      font-size: 13px; color: var(--muted); letter-spacing: .04em;
-      margin: 0 0 14px;
+      margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--text);
     }
-    .scan-divider {
-      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
-      color: var(--muted); margin: 14px 0 10px; font-weight: 700;
+    .vision-status::before {
+      content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--teal); margin-right: 8px; vertical-align: middle;
     }
+    .scan-hint { margin-left: auto; font-size: 11px; color: var(--muted); letter-spacing: .02em; }
 
     /* ---------------------------------------------------------------- */
-    /* LIBRARY TAB — sound "cartridges"                                 */
+    /* LIBRARY TAB — Emergent-Drums-style sample modules                */
     /* ---------------------------------------------------------------- */
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-    .card {
-      background: var(--paper); border: 1px solid var(--ink); border-radius: 4px; padding: 12px;
-      min-height: 140px; display: flex; flex-direction: column; gap: 6px;
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(322px, 1fr)); gap: 16px; }
+
+    /* one sample = one module cell */
+    .mod {
+      --type-color: var(--accent);
+      position: relative; border-radius: 4px; overflow: hidden;
+      background: #141417;
+      border: 1px solid #26262c;
+      display: flex; flex-direction: column;
+      transition: border-color .15s;
     }
-    .card.unlocked { border-top: 3px solid var(--ink); }
-    .card.locked {
-      align-items: center; justify-content: center; color: var(--muted);
-      background: repeating-linear-gradient(45deg, var(--bg), var(--bg) 9px, var(--panel) 9px, var(--panel) 18px);
-      border-style: dashed; border-color: var(--line);
+    .mod:hover { border-color: color-mix(in srgb, var(--type-color) 40%, #26262c); }
+
+    /* header strip — very dark, faintly tinted by drum type */
+    .mod-head {
+      display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 7px;
+      background: color-mix(in srgb, var(--type-color) 20%, #16161a);
+      border-bottom: 1px solid rgba(0,0,0,.45);
     }
-    .card-locked-mark { font-size: 40px; font-weight: 800; color: var(--mark); }
-    .card-name {
-      font-weight: 700; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
-      color: var(--ink-fg); background: var(--ink); border-radius: 2px; padding: 3px 8px; align-self: flex-start;
+    .mod-name {
+      display: flex; align-items: center; gap: 6px; justify-content: space-between;
+      min-width: 96px; max-width: 130px; height: 18px; padding: 0 7px;
+      background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.08); border-radius: 3px;
+      font-size: 11px; font-weight: 600; color: #ececed; overflow: hidden; white-space: nowrap;
     }
-    .card-sub { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
-    .card.unlocked button { font-family: var(--font); font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      font-size: 11px; color: var(--ink); cursor: pointer; border: 1px solid var(--ink); border-radius: 3px; padding: 6px 8px;
-      background: transparent; }
-    .card.unlocked button:first-of-type { margin-top: auto; }
-    .card.unlocked button:hover { background: var(--ink); color: var(--ink-fg); }
+    .mod-name .nm { overflow: hidden; text-overflow: ellipsis; }
+    .mod-name .cv { color: rgba(255,255,255,.45); font-size: 8px; flex-shrink: 0; }
+    .mod-ico { color: rgba(255,255,255,.38); font-size: 12px; line-height: 1; cursor: default; }
+    .mod-spacer { margin-left: auto; }
+    .mod-badge {
+      height: 18px; display: flex; align-items: center; padding: 0 7px;
+      background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.08); border-radius: 3px;
+      font-size: 10px; font-weight: 600; color: #c8c9ce; font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .mod-wave-ico { color: var(--type-color); font-size: 12px; margin-left: 1px; opacity: .85; }
+
+    /* body: waveform column (left) + vertical fader bank (right) */
+    .mod-body { display: flex; padding: 8px 9px 0; gap: 8px; }
+    .mod-wave-col { flex: 1; min-width: 0; }
+    .mod-wave { width: 100%; height: 72px; display: block; cursor: pointer; }
+    .mod-fader-col { width: 116px; flex-shrink: 0; }
+
+    .mod-faders { display: flex; justify-content: space-between; height: 72px; padding: 0 6px; }
+    .vfader { position: relative; width: 13px; }
+    .vfader .vtrack {
+      position: absolute; left: 50%; top: 2px; bottom: 2px; width: 2px; transform: translateX(-50%);
+      background: #0b0e14; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .vfader .vhandle {
+      position: absolute; left: 50%; top: var(--p, 45%); transform: translate(-50%, -50%);
+      width: 13px; height: 8px; border-radius: 2px;
+      background: linear-gradient(180deg, #dde1ea, #9ea4b4);
+      box-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+
+    /* footer — two rows of controls, aligned to the body's two columns */
+    .mod-controls { padding: 5px 9px 8px; }
+    .mc-row { display: flex; align-items: center; gap: 6px; height: 22px; }
+    .mc-left { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+    .mc-right { width: 116px; flex-shrink: 0; display: flex; justify-content: space-between; padding: 0 4px; }
+    .mc-right span { font-size: 9.5px; font-weight: 700; color: #6e7688; width: 12px; text-align: center; }
+    .mc-right.tune-readout { justify-content: flex-end; }
+    .mc-right.tune-readout span { width: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .vfader { cursor: ns-resize; }
+    .hslider.tune { cursor: ew-resize; }
+
+    .mc-btn { color: #7a8194; font-size: 12px; line-height: 1; background: none; border: none;
+      cursor: pointer; padding: 0; }
+    .mc-btn:hover { color: #fff; }
+    .mc-btn.play { color: var(--type-color); }
+    .mc-sym { color: #7a8194; font-size: 13px; line-height: 1; }
+
+    .hslider { position: relative; flex: 1; height: 14px; min-width: 20px; }
+    .hslider::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; transform: translateY(-50%);
+      background: #0b0e14; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .hslider .hknob {
+      position: absolute; top: 50%; left: var(--p, 50%); transform: translate(-50%, -50%);
+      width: 9px; height: 9px; border-radius: 50%;
+      background: linear-gradient(180deg, #dde1ea, #9ea4b4); box-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+
+    /* add-to-sequencer — small static button in the module header */
+    .mod-add {
+      flex-shrink: 0; font-family: var(--font); font-size: 10px; font-weight: 600; letter-spacing: .02em;
+      color: var(--text); background: rgba(255,255,255,.05);
+      border: 1px solid var(--line-2); border-radius: 4px; height: 18px; padding: 0 9px; cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .mod-add:hover { border-color: var(--accent); color: #fff; background: rgba(255,255,255,.08); }
+
+    /* LOCKED module — undiscovered slot */
+    .mod.locked { border-style: dashed; border-color: #23272f; }
+    .mod.locked .mod-locked {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 40px 12px; min-height: 150px;
+      background: repeating-linear-gradient(45deg, #121622 0 10px, #0f131d 10px 20px);
+    }
+    .mod-locked-mark {
+      font-size: 34px; font-weight: 900; color: rgba(255,255,255,.16);
+      width: 64px; height: 64px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px dashed rgba(255,255,255,.14);
+    }
+    .mod-locked-label { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
 
     /* ---------------------------------------------------------------- */
-    /* SEQUENCER TAB — triangle steps (TB-303 style)                    */
+    /* SEQUENCER TAB — Serum-style                                      */
     /* ---------------------------------------------------------------- */
-    .seq-grid { background: var(--paper); border: 1px solid var(--ink); border-radius: 4px; padding: 14px 16px; }
+    /* oscilloscope screen above the grid */
+    .scope-wrap {
+      position: relative; margin-bottom: 12px; border-radius: 5px; overflow: hidden;
+      border: 1px solid var(--line); background: #08080b;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    #scope-canvas { display: block; width: 100%; height: 104px; }
+    .scope-label {
+      position: absolute; top: 8px; left: 12px; pointer-events: none;
+      font-size: 10px; letter-spacing: .02em; font-weight: 500; color: var(--faint);
+    }
+    .scope-grid-lines {
+      position: absolute; inset: 0; pointer-events: none; opacity: .5;
+      background:
+        linear-gradient(90deg, rgba(133,133,196,.05) 1px, transparent 1px) 0 0 / 40px 40px,
+        linear-gradient(0deg,  rgba(133,133,196,.05) 1px, transparent 1px) 0 0 / 40px 40px;
+    }
 
-    /* number ruler above the steps */
-    .seq-ruler { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .ruler-spacer { width: 128px; flex-shrink: 0; }
-    .ruler-steps { display: flex; gap: 6px; }
+    .seq-grid {
+      background: #141417;
+      border: 1px solid var(--line); border-radius: 5px; padding: 16px 18px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .seq-ruler { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .ruler-spacer { width: 150px; flex-shrink: 0; }
+    .ruler-steps { display: flex; gap: 7px; }
     .ruler-steps span {
-      width: 30px; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted);
+      width: 30px; text-align: center; font-size: 11px; font-weight: 700; color: var(--faint);
       font-variant-numeric: tabular-nums;
     }
-    .ruler-steps span:nth-child(4n+1) { color: var(--ink); }  /* mark each beat (1,5,9,13) */
+    .ruler-steps span:nth-child(4n+1) { color: var(--accent); }
+    .ruler-steps span:nth-child(4n+1):not(:first-child) { margin-left: 8px; }
 
-    .track-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .track-row {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 9px;
+      padding: 6px; border-radius: 5px; background: rgba(255,255,255,.012);
+      border: 1px solid transparent;
+    }
+    .track-row:hover { border-color: var(--line); }
     .track-label {
-      width: 120px; flex-shrink: 0; font-size: 12px; font-weight: 700;
-      letter-spacing: .04em; text-transform: uppercase; color: var(--ink-fg);
-      background: var(--ink); border-radius: 2px; padding: 6px 8px;
+      width: 138px; flex-shrink: 0; font-size: 12px; font-weight: 700;
+      letter-spacing: .02em; color: var(--text);
+      background:
+        linear-gradient(90deg, var(--type-tint, transparent), transparent 70%),
+        var(--surface);
+      border: 1px solid var(--line-2);
+      border-left: 3px solid var(--type-color, var(--line-2));
+      border-radius: 4px; padding: 9px 11px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .track-steps { display: flex; gap: 6px; align-items: center; }
+    .track-steps { display: flex; gap: 7px; align-items: center; }
 
-    /* each step is a flat triangle; off = small grey, on = large ink-filled */
-    .step {
-      width: 30px; height: 30px; padding: 0; border: none; background: transparent;
-      cursor: pointer; position: relative; border-radius: 4px;
+    /* per-track block + visible pitch lane under the steps */
+    .track-block { margin-bottom: 12px; }
+    .track-block .track-row { margin-bottom: 3px; }
+    .pitch-lane { display: flex; align-items: center; gap: 12px; padding: 0 6px; }
+    .pitch-lane-label {
+      width: 138px; flex-shrink: 0; text-align: right; padding-right: 9px;
+      font-size: 8.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--faint);
+    }
+    .pitch-cells { display: flex; gap: 7px; align-items: center; }
+    .pitch-cell {
+      width: 30px; height: 15px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 4px;
+      background: #101013; cursor: ns-resize; user-select: none;
       display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums;
+      transition: border-color .1s, color .1s;
     }
-    .step::before {
-      content: ""; width: 11px; height: 10px; background: var(--mark);
-      clip-path: polygon(50% 0, 0 100%, 100% 100%);
-      transition: width .07s, height .07s, background .07s;
+    .pitch-cell.beat-start:not(:first-child) { margin-left: 8px; }
+    .pitch-cell:hover { border-color: var(--accent); color: var(--text); }
+    .pitch-cell.nz { color: var(--gold); border-color: var(--gold); }
+
+    /* each step: rounded slab; off = dark, on = neon-filled with glow */
+    .step {
+      width: 30px; height: 34px; padding: 0; cursor: pointer; position: relative;
+      border-radius: 4px; border: 1px solid var(--line-2);
+      background: linear-gradient(180deg, #1e1e24, #161619);
+      transition: transform .06s, box-shadow .12s, background .12s, border-color .12s;
     }
-    .step.beat-start::before { background: var(--mark-2); }  /* slightly stronger on the beat */
-    .step:hover::before { background: var(--muted); }
-    .step.on::before { width: 26px; height: 23px; background: var(--ink); }
-    .step.playhead { background: rgba(27,27,24,.12); }
-    .step.playhead.on::before { background: var(--accent); }
+    .step:hover { border-color: var(--accent); }
+    .step.tuned { border-color: var(--gold); }
+    .step-pitch {
+      position: absolute; left: 0; right: 0; bottom: 1px; text-align: center;
+      font-size: 8px; font-weight: 800; color: var(--text); pointer-events: none;
+      font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+    }
+    .step.on .step-pitch { color: #0d0d10; }
+    .step.beat-start { border-color: #3a3a44; background: linear-gradient(180deg, #232329, #18181c); }
+    .step.beat-start:not(:first-child) { margin-left: 8px; }   /* group the 4 beats */
+    .step.on {
+      background: linear-gradient(180deg, #9494c8, var(--accent));
+      border-color: #9c9cc8;
+      box-shadow: 0 0 10px rgba(125,125,184,.5), inset 0 1px 0 rgba(255,255,255,.25);
+    }
+    .step.playhead { box-shadow: 0 0 0 2px var(--teal); }
+    .step.playhead.on {
+      background: linear-gradient(180deg, #eceef5, #b9b9dd);
+      box-shadow: 0 0 0 2px #d8d8e6;
+    }
 
     .track-mute, .track-remove {
-      font-family: var(--font); font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      font-size: 11px; color: var(--ink); cursor: pointer; border: 1px solid var(--ink); border-radius: 3px; padding: 5px 8px;
-      background: transparent;
+      font-family: var(--font); font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      font-size: 10px; color: var(--muted); cursor: pointer; border: 1px solid var(--line-2);
+      border-radius: 4px; padding: 7px 9px; background: var(--surface);
+      transition: background .12s, color .12s, border-color .12s;
     }
-    .track-mute { margin-left: 8px; }
-    .track-mute:hover { background: var(--ink); color: var(--ink-fg); }
-    .track-mute.active { background: var(--ink); color: var(--ink-fg); }
-    .track-remove:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .empty { color: var(--muted); padding: 14px 2px; }
+    .track-mute { margin-left: 10px; }
+    .track-mute:hover { color: var(--text); border-color: var(--accent); }
+    .track-mute.active { background: var(--gold); color: #1a1505; border-color: var(--gold); }
+    .track-remove:hover { background: var(--hot); border-color: var(--hot); color: #fff; }
+    .empty { color: var(--muted); padding: 26px 4px; text-align: center; }
 
-    /* bottom control strip — flat, no metal */
+    /* transport strip */
     .control-plate {
-      margin-top: 16px; display: flex; align-items: center; gap: 16px;
-      background: var(--bg); border: 1px solid var(--ink); border-radius: 4px; padding: 14px 18px;
+      margin-top: 14px; display: flex; align-items: center; gap: 10px;
+      background: #141417;
+      border: 1px solid var(--line); border-radius: 5px; padding: 12px 16px;
     }
-    .control-plate .plate-brand { margin-left: auto; color: var(--muted); font-size: 12px;
-      letter-spacing: .22em; text-transform: uppercase; font-weight: 700; }
+    .control-plate .plate-brand {
+      margin-left: auto; color: var(--faint); font-size: 11px;
+      letter-spacing: .02em; font-weight: 500;
+    }
 
     /* ---------------------------------------------------------------- */
     /* REVEAL MODAL                                                     */
     /* ---------------------------------------------------------------- */
-    .modal { display: none; position: fixed; inset: 0; background: rgba(20,20,18,.45);
-      align-items: center; justify-content: center; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(5,6,10,.7); backdrop-filter: blur(6px);
+      align-items: center; justify-content: center; z-index: 60; }
     .modal.active { display: flex; }
     .modal-card {
-      background: var(--panel); padding: 30px 44px; border-radius: 4px;
-      text-align: center; border: 1px solid var(--ink); animation: pop .18s ease-out;
+      position: relative; background: #16161a;
+      padding: 32px 44px; border-radius: 8px;
+      text-align: center; border: 1px solid var(--line-2);
+      box-shadow: 0 24px 70px rgba(0,0,0,.7);
+      animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
     }
-    @keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    .modal-card h2 { margin: 0 0 10px; color: var(--muted); font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .18em; }
-    .modal-card .name { font-size: 26px; font-weight: 700; color: var(--ink); margin-bottom: 22px; text-transform: uppercase; letter-spacing: .04em; }
+    @keyframes pop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-card h2 { margin: 0 0 10px; color: var(--accent); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .2em; }
+    .modal-card .name { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 24px; }
     #reveal-close { font-family: var(--font); }
   </style>
 </head>
 <body>
-  <!-- ================= TOP DEVICE BAR ================= -->
+  <div class="app-frame">
+  <!-- ================= TOP BAR ================= -->
   <div class="studio-bar">
-    <div class="studio-logo">
-      <span class="mark"></span><b>Snap-It</b><span class="thin">Studio</span>
+    <div class="brand-cluster">
+      <span class="globe"></span>
+      <span class="brand-text">
+        <b class="brand-title">Snap-It</b>
+        <span class="brand-sub">Sampler</span>
+      </span>
+      <span class="brand-ver">V0.1.0</span>
     </div>
 
     <!-- These device tabs ARE the app's scan / library / sequencer tabs. -->
@@ -284,48 +530,47 @@
 
   <div class="stage">
 
-    <!-- ================= SCAN TAB ================= -->
+    <!-- ================= SCAN TAB (camera in a plugin panel) ================= -->
     <section id="tab-scan" class="tab-panel active">
-      <div class="machine">
-        <div class="brand">
-          <span class="title">Object Scanner</span>
-          <span class="cc">Computer Controlled</span>
-          <span class="model">SNAP</span>
-        </div>
-        <p class="hint">Point the camera at any object. It will be detected and its sample unlocked automatically.</p>
-        <div class="camera-wrap">
-          <video id="camera-video" autoplay muted playsinline width="480" height="360"></video>
-          <canvas id="camera-canvas"></canvas>
-        </div>
-        <p id="vision-status" class="vision-status">Initialising…</p>
-        <div class="scan-divider">Manual scan</div>
-        <div class="scan-row">
-          <select id="scan-select" class="hw"></select>
-          <button id="scan-button" class="hw yellow">Scan</button>
+      <div class="page">
+        <div class="scan-panel">
+          <div class="scan-head">
+            <span class="rec-dot"></span>
+            <span class="ttl">Object Scanner</span>
+            <span class="badge">Live</span>
+            <span class="spacer"></span>
+            <span class="wave-ico">&#8767;</span>
+          </div>
+
+          <div class="camera-stage">
+            <video id="camera-video" autoplay muted playsinline></video>
+            <canvas id="camera-canvas"></canvas>
+            <div class="cam-vignette"></div>
+            <div class="reticle"><span></span><span></span><span></span><span></span></div>
+          </div>
+
+          <div class="scan-foot">
+            <p id="vision-status" class="vision-status">Initialising…</p>
+            <span class="scan-hint">Point the camera at an object — it unlocks automatically.</span>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- ================= LIBRARY TAB ================= -->
     <section id="tab-library" class="tab-panel">
-      <div class="machine">
-        <div class="brand">
-          <span class="title">Sound Library</span>
-          <span class="cc">Computer Controlled</span>
-          <span class="model">LIB</span>
-        </div>
-        <p class="hint">Your collection. Scan more objects to fill in the silhouettes.</p>
+      <div class="page">
         <div id="library-grid" class="grid"></div>
       </div>
     </section>
 
     <!-- ================= SEQUENCER TAB ================= -->
     <section id="tab-sequencer" class="tab-panel">
-      <div class="machine">
-        <div class="brand">
-          <span class="title">Rhythm Composer</span>
-          <span class="cc">Computer Controlled</span>
-          <span class="model">SEQ-16</span>
+      <div class="page">
+        <div class="scope-wrap">
+          <canvas id="scope-canvas" width="1100" height="110"></canvas>
+          <div class="scope-grid-lines"></div>
+          <span class="scope-label">Oscilloscope</span>
         </div>
 
         <div class="seq-grid">
@@ -342,22 +587,23 @@
         </div>
 
         <div class="control-plate">
-          <button id="play-button" class="hw yellow">&#9654; Start</button>
+          <button id="play-button" class="hw primary">&#9654; Start</button>
           <button id="stop-button" class="hw">&#9632; Stop</button>
           <button id="clear-button" class="hw">Clear</button>
-          <span class="plate-brand">Snap-It &middot; TR-Style Sequencer</span>
+          <span class="plate-brand">Snap-It &middot; Step Sequencer</span>
         </div>
       </div>
     </section>
 
   </div>
+  </div><!-- /.app-frame -->
 
   <!-- Unlock reveal modal -->
   <div id="reveal-modal" class="modal">
     <div class="modal-card">
       <h2 id="reveal-title">You unlocked:</h2>
       <div class="name" id="reveal-name"></div>
-      <button id="reveal-close" class="hw yellow">Nice!</button>
+      <button id="reveal-close" class="hw primary">Nice!</button>
     </div>
   </div>
 

@@ -9,6 +9,9 @@ window.Vision = (() => {
   const SCORE_THRESHOLD = 0.60;  // min confidence to accept a detection
   const DEBOUNCE_MS     = 2500;  // min gap between two scans of the same object
 
+  // Classes we never react to or draw (people walk in front of the camera a lot).
+  const IGNORED_CLASSES = { 'person': true };
+
   // Maps COCO-SSD class names → objectSampleMap.json keys.
   const COCO_TO_SAMPLE = {
     'cup':          'cup',
@@ -97,6 +100,9 @@ window.Vision = (() => {
   }
 
   function handleBestPrediction(predictions) {
+    // Drop ignored classes (e.g. people) before doing anything with them.
+    predictions = predictions.filter(p => !IGNORED_CLASSES[p.class]);
+
     // Find the highest-confidence prediction that maps to one of our samples.
     const mapped = predictions
       .filter(p => p.score >= SCORE_THRESHOLD && COCO_TO_SAMPLE[p.class])
@@ -139,6 +145,7 @@ window.Vision = (() => {
 
     predictions.forEach(pred => {
       if (pred.score < 0.40) return;
+      if (IGNORED_CLASSES[pred.class]) return;   // never draw people
 
       const [x, y, w, h] = pred.bbox;
       const hit = !!COCO_TO_SAMPLE[pred.class];
