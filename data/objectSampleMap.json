@@ -1,17 +1,62 @@
 {
-  "cup":        { "sampleFile": "kick_01.wav",   "displayName": "Deep Kick" },
-  "mug":        { "sampleFile": "kick_02.wav",   "displayName": "Punchy Kick" },
-  "book":       { "sampleFile": "snare_01.wav",  "displayName": "Tight Snare" },
-  "box":        { "sampleFile": "snare_02.wav",  "displayName": "Fat Snare" },
-  "bottle":     { "sampleFile": "hat_01.wav",    "displayName": "Closed Hat" },
-  "plant":      { "sampleFile": "hat_02.wav",    "displayName": "Open Hat" },
-  "phone":      { "sampleFile": "clap_01.wav",   "displayName": "Studio Clap" },
-  "laptop":     { "sampleFile": "perc_01.wav",   "displayName": "Wood Block" },
-  "mouse":      { "sampleFile": "rim_01.wav",    "displayName": "Rimshot" },
-  "keyboard":   { "sampleFile": "tom_01.wav",    "displayName": "Low Tom" },
-  "pen":        { "sampleFile": "tom_02.wav",    "displayName": "High Tom" },
-  "headphones": { "sampleFile": "cymbal_01.wav", "displayName": "Crash Cymbal" },
-  "can":        { "sampleFile": "perc_03.wav",   "displayName": "Tin Tap" },
-  "shoe":       { "sampleFile": "perc_04.wav",   "displayName": "Stomp" },
-  "_default":   { "sampleFile": "perc_02.wav",   "displayName": "Mystery Hit" }
+  "cup": {
+    "sampleFile": "OLIVER_kick_weird_metal_bang.wav",
+    "displayName": "Kick Weird Metal Bang"
+  },
+  "mug": {
+    "sampleFile": "OLIVER_snare_modern_punchy_metal_D.wav",
+    "displayName": "Snare Modern Punchy Metal D"
+  },
+  "book": {
+    "sampleFile": "OLIVER_snare_punchy_beef.wav",
+    "displayName": "Snare Punchy Beef"
+  },
+  "box": {
+    "sampleFile": "Hat_13_-_Gray_Area.wav",
+    "displayName": "Hat 13 Gray Area"
+  },
+  "bottle": {
+    "sampleFile": "OLIVER_clap_electronic_biggy.wav",
+    "displayName": "Clap Electronic Biggy"
+  },
+  "plant": {
+    "sampleFile": "OLIVER_bass_mixready_underground_C.wav",
+    "displayName": "Bass Mixready Underground C"
+  },
+  "phone": {
+    "sampleFile": "OLIVER_bass_looncan_C.wav",
+    "displayName": "Bass Looncan C"
+  },
+  "laptop": {
+    "sampleFile": "OLIVER_snare_rimshot_hard.wav",
+    "displayName": "Snare Rimshot Hard"
+  },
+  "mouse": {
+    "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",
+    "displayName": "Cowbell 01 Dysfunctional"
+  },
+  "keyboard": {
+    "sampleFile": "OLIVER_tom_electronic_cheap_F.wav",
+    "displayName": "Tom Electronic Cheap F"
+  },
+  "pen": {
+    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
+    "displayName": "Snare Modern Dnmo Block"
+  },
+  "headphones": {
+    "sampleFile": "Horn-y.wav",
+    "displayName": "Horn Y"
+  },
+  "can": {
+    "sampleFile": "OLIVER_percussion_popper.wav",
+    "displayName": "Percussion Popper"
+  },
+  "shoe": {
+    "sampleFile": "OOF.wav",
+    "displayName": "Oof"
+  },
+  "_default": {
+    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
+    "displayName": "Kick Warm Mixready Low Blow"
+  }
 }
