@@ -1,62 +1,62 @@
 {
   "cup": {
-    "sampleFile": "OLIVER_kick_weird_metal_bang.wav",
-    "displayName": "Kick Weird Metal Bang"
+    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
+    "displayName": "Kick Warm Mixready Low Blow"
   },
   "mug": {
-    "sampleFile": "OLIVER_snare_modern_punchy_metal_D.wav",
-    "displayName": "Snare Modern Punchy Metal D"
+    "sampleFile": "OLIVER_percussion_distressed_tom_C.wav",
+    "displayName": "Percussion Distressed Tom C"
   },
   "book": {
-    "sampleFile": "OLIVER_snare_punchy_beef.wav",
-    "displayName": "Snare Punchy Beef"
+    "sampleFile": "OLIVER_percussion_popper.wav",
+    "displayName": "Percussion Popper"
   },
   "box": {
-    "sampleFile": "Hat_13_-_Gray_Area.wav",
-    "displayName": "Hat 13 Gray Area"
+    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
+    "displayName": "Snare Modern Dnmo Block"
   },
   "bottle": {
-    "sampleFile": "OLIVER_clap_electronic_biggy.wav",
-    "displayName": "Clap Electronic Biggy"
+    "sampleFile": "OLIVER_snare_modern_mixready_layer_magic.wav",
+    "displayName": "Snare Modern Mixready Layer Magic"
   },
   "plant": {
-    "sampleFile": "OLIVER_bass_mixready_underground_C.wav",
-    "displayName": "Bass Mixready Underground C"
+    "sampleFile": "OLIVER_snare_modern_mixready_metallic_thump.wav",
+    "displayName": "Snare Modern Mixready Metallic Thump"
   },
   "phone": {
-    "sampleFile": "OLIVER_bass_looncan_C.wav",
-    "displayName": "Bass Looncan C"
+    "sampleFile": "OLIVER_snare_modern_punchy_metal_D#.wav",
+    "displayName": "Snare Modern Punchy Metal D#"
   },
   "laptop": {
     "sampleFile": "OLIVER_snare_rimshot_hard.wav",
     "displayName": "Snare Rimshot Hard"
   },
   "mouse": {
-    "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",
-    "displayName": "Cowbell 01 Dysfunctional"
+    "sampleFile": "OLIVER_snare_short_mixready_dnb_vogue.wav",
+    "displayName": "Snare Short Mixready Dnb Vogue"
   },
   "keyboard": {
     "sampleFile": "OLIVER_tom_electronic_cheap_F.wav",
     "displayName": "Tom Electronic Cheap F"
   },
   "pen": {
-    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
-    "displayName": "Snare Modern Dnmo Block"
+    "sampleFile": "Open hat 03 - TRACK UNO.wav",
+    "displayName": "Open Hat 03 Track Uno"
   },
   "headphones": {
-    "sampleFile": "Horn-y.wav",
-    "displayName": "Horn Y"
+    "sampleFile": "Snare 04 - GOT IT GOOD.wav",
+    "displayName": "Snare 04 Got It Good"
   },
   "can": {
-    "sampleFile": "OLIVER_percussion_popper.wav",
-    "displayName": "Percussion Popper"
+    "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",
+    "displayName": "Cowbell 01 Dysfunctional"
   },
   "shoe": {
     "sampleFile": "OOF.wav",
     "displayName": "Oof"
   },
   "_default": {
-    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
-    "displayName": "Kick Warm Mixready Low Blow"
+    "sampleFile": "Horn-y.wav",
+    "displayName": "Horn Y"
   }
 }
