@@ -7,7 +7,7 @@
 //   3. Drives playback with Tone.Transport + a single Tone.Sequence loop.
 //
 // A "track" is one row in the sequencer:
-//   { id, objectType, steps: [16 booleans], muted }
+//   { id, objectType, steps: [16 booleans], muted, volume }
 //
 // Public API (attached to window):
 //   audioEngine.init()                       -> async; load all samples + build loop
@@ -36,6 +36,7 @@ const audioEngine = (function () {
   let exporting = false;    // are we currently capturing audio?
   let analyser = null;      // Tone.Analyser tapping the master (oscilloscope)
   let sampleLoadedCb = null;// optional UI callback fired when a sample finishes loading
+  let keyTranspose = 0;     // global KEY transpose, semitones (-12..+12)
 
   // ---- setup -----------------------------------------------------------------
 
@@ -46,7 +47,9 @@ const audioEngine = (function () {
     const map = library.getAllSampleInfo();
 
     Object.keys(map).forEach(function (objectType) {
-      const url = 'samples/' + map[objectType].sampleFile;
+      // encodeURIComponent so filenames with '#' (e.g. "..._D#.wav") aren't cut
+      // at the fragment marker when fetched as a URL.
+      const url = 'samples/' + encodeURIComponent(map[objectType].sampleFile);
 
       // Per-sample defaults. The envelope basically passes the sample through
       // (instant attack, full sustain) until the user shapes it on the card.
@@ -100,7 +103,7 @@ const audioEngine = (function () {
           if (!track.steps[step]) return;
           // Each step can carry its own pitch offset (semitones -> cents).
           const extraCents = (track.stepPitch[step] || 0) * 100;
-          triggerSample(track.objectType, time, extraCents);
+          triggerSample(track.objectType, time, extraCents, track.volume);
         });
 
         // Tell the UI which step is playing, synced to the visual frame.
@@ -139,7 +142,8 @@ const audioEngine = (function () {
 
   // Fire a sample once with its current ADSR + tune, plus any extra pitch
   // (cents) for this hit. `time` is optional (omit for "now", e.g. preview).
-  function triggerSample(objectType, time, extraCents) {
+  // `gain` (0..1) is the track's mixer level; omitted = full volume.
+  function triggerSample(objectType, time, extraCents, gain) {
     const key = library.resolveKey(objectType);
     const player = players[key];
     const env = envs[key];
@@ -149,8 +153,10 @@ const audioEngine = (function () {
     // Use an explicit time so rapid retriggers always advance on the clock.
     const t = (time === undefined) ? Tone.now() : time;
 
-    const cents = (s ? s.cents : 0) + (extraCents || 0);
+    // KEY transpose shifts every hit globally, on top of tune + step pitch.
+    const cents = (s ? s.cents : 0) + (extraCents || 0) + keyTranspose * 100;
     player.playbackRate = centsToRate(cents);
+    player.volume.value = Tone.gainToDb(gain == null ? 1 : Math.max(0.0001, gain));
 
     // Hold the envelope open for the (rate-adjusted) length of the sample.
     const dur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
@@ -179,14 +185,19 @@ const audioEngine = (function () {
   }
 
   // Add a new sequencer row for the given sample. Returns its track id.
-  function addTrackToSequencer(objectType) {
+  // displayName is stored on the track so a pattern snapshot is self-contained —
+  // a jam peer can render/label the row without any local lookup.
+  function addTrackToSequencer(objectType, displayName) {
     const key = library.resolveKey(objectType);
+    const info = library.getSampleInfo(key);
     const track = {
       id: nextTrackId++,
       objectType: key,
+      displayName: displayName || (info && info.displayName) || key,
       steps: new Array(STEP_COUNT).fill(false),
       stepPitch: new Array(STEP_COUNT).fill(0), // per-step pitch offset, semitones
       muted: false,
+      volume: 0.8, // mixer level 0..1 (0.8 ≈ -2 dB leaves headroom by default)
     };
     tracks.push(track);
     console.log('[audioEngine] added track', track.id, 'for', key);
@@ -210,11 +221,57 @@ const audioEngine = (function () {
     return track.steps[stepIndex];
   }
 
+  // Set one step explicitly on/off. Networked edits use this (not toggle) so an
+  // action is idempotent no matter what each peer's local state was.
+  function setStep(trackId, stepIndex, on) {
+    const track = findTrack(trackId);
+    if (!track) return false;
+    track.steps[stepIndex] = !!on;
+    return track.steps[stepIndex];
+  }
+
   function setTrackMute(trackId, muted) {
     const track = findTrack(trackId);
     if (!track) return;
     track.muted = muted;
     console.log('[audioEngine] track', trackId, 'muted =', muted);
+  }
+
+  // Mixer level for one track (the crayon bars). Clamped 0..1, returns the
+  // value used so networked edits converge on the same number.
+  function setTrackVolume(trackId, volume) {
+    const track = findTrack(trackId);
+    if (!track) return 0;
+    track.volume = Math.max(0, Math.min(1, +volume || 0));
+    return track.volume;
+  }
+
+  function getTrackVolume(trackId) {
+    const track = findTrack(trackId);
+    return track ? (track.volume == null ? 0.8 : track.volume) : 0.8;
+  }
+
+  // Swing: delays every off-beat 16th. 0 = straight, 1 = full triplet feel.
+  function setSwing(amount) {
+    const v = Math.max(0, Math.min(0.8, +amount || 0));
+    const transport = Tone.getTransport();
+    transport.swing = v;
+    transport.swingSubdivision = '16n';
+    return v;
+  }
+
+  function getSwing() {
+    return Tone.getTransport().swing || 0;
+  }
+
+  // KEY: transpose the whole kit by semitones (applied at trigger time).
+  function setKeyTranspose(semitones) {
+    keyTranspose = Math.max(-12, Math.min(12, Math.round(semitones) || 0));
+    return keyTranspose;
+  }
+
+  function getKeyTranspose() {
+    return keyTranspose;
   }
 
   // Set the master tempo, clamped to the 60-180 range. Returns the value used.
@@ -223,6 +280,27 @@ const audioEngine = (function () {
     Tone.getTransport().bpm.value = clamped;
     console.log('[audioEngine] BPM =', clamped);
     return clamped;
+  }
+
+  function getBpm() {
+    return Math.round(Tone.getTransport().bpm.value);
+  }
+
+  function isPlaying() {
+    return Tone.getTransport().state === 'started';
+  }
+
+  // Unlock the AudioContext from a user gesture (Host/Join buttons call this so a
+  // client can start making sound the moment the host presses play).
+  async function unlock() {
+    await ensureAudioStarted();
+  }
+
+  // Master output mute. In a jam session only ONE machine is the "output" — all
+  // others run the same transport (so playheads stay in step) but stay silent.
+  function setMasterMute(muted) {
+    Tone.getDestination().mute = !!muted;
+    console.log('[audioEngine] master mute =', !!muted);
   }
 
   async function play() {
@@ -320,6 +398,68 @@ const audioEngine = (function () {
     console.log('[audioEngine] cleared all steps');
   }
 
+  // ---- shared-pattern snapshot (jam sessions) --------------------------------
+  // A snapshot is the ENTIRE sequencer state, serialisable and self-contained, so
+  // a jam host can hand the whole "project" to any peer in a single message.
+
+  function getTracks() {
+    return tracks.map(function (t) {
+      return {
+        id: t.id,
+        objectType: t.objectType,
+        displayName: t.displayName,
+        steps: t.steps.slice(),
+        stepPitch: t.stepPitch.slice(),
+        muted: t.muted,
+        volume: t.volume == null ? 0.8 : t.volume,
+      };
+    });
+  }
+
+  function getPatternSnapshot() {
+    return {
+      tracks: getTracks(),
+      bpm: getBpm(),
+      swing: getSwing(),
+      key: keyTranspose,
+      nextTrackId: nextTrackId,
+    };
+  }
+
+  // Replace the whole sequencer state with an incoming snapshot. The Tone.Sequence
+  // reads the module-level `tracks` array live, so we mutate it IN PLACE (never
+  // reassign) to keep the running loop pointed at the new data.
+  function applyPatternSnapshot(snap) {
+    if (!snap || !Array.isArray(snap.tracks)) return;
+
+    tracks.length = 0;
+    snap.tracks.forEach(function (t) {
+      const steps = new Array(STEP_COUNT).fill(false);
+      const pitch = new Array(STEP_COUNT).fill(0);
+      (t.steps || []).forEach(function (v, i) { if (i < STEP_COUNT) steps[i] = !!v; });
+      (t.stepPitch || []).forEach(function (v, i) { if (i < STEP_COUNT) pitch[i] = v || 0; });
+      tracks.push({
+        id: t.id,
+        objectType: t.objectType,
+        displayName: t.displayName || t.objectType,
+        steps: steps,
+        stepPitch: pitch,
+        muted: !!t.muted,
+        volume: t.volume == null ? 0.8 : Math.max(0, Math.min(1, +t.volume || 0)),
+      });
+    });
+
+    // Keep id generation ahead of anything we've seen so a future host-side add
+    // never collides with an existing id.
+    let maxId = 0;
+    tracks.forEach(function (t) { if (t.id > maxId) maxId = t.id; });
+    nextTrackId = Math.max(nextTrackId, snap.nextTrackId || 0, maxId + 1);
+
+    if (typeof snap.bpm === 'number') setMasterBpm(snap.bpm);
+    if (typeof snap.swing === 'number') setSwing(snap.swing);
+    if (typeof snap.key === 'number') setKeyTranspose(snap.key);
+  }
+
   // EXPORT (the old record button): capture one bar of the beat to a file.
   // We hook a Tone.Recorder onto every player, run the transport for exactly
   // one bar at the current tempo, then write the recording to the user's
@@ -379,10 +519,24 @@ const audioEngine = (function () {
     addTrackToSequencer: addTrackToSequencer,
     removeTrack: removeTrack,
     toggleStep: toggleStep,
+    setStep: setStep,
     setTrackMute: setTrackMute,
+    setTrackVolume: setTrackVolume,
+    getTrackVolume: getTrackVolume,
+    setSwing: setSwing,
+    getSwing: getSwing,
+    setKeyTranspose: setKeyTranspose,
+    getKeyTranspose: getKeyTranspose,
     setMasterBpm: setMasterBpm,
+    getBpm: getBpm,
+    isPlaying: isPlaying,
+    unlock: unlock,
+    setMasterMute: setMasterMute,
     play: play,
     stop: stop,
+    getTracks: getTracks,
+    getPatternSnapshot: getPatternSnapshot,
+    applyPatternSnapshot: applyPatternSnapshot,
     onStep: onStep,
     onSampleLoaded: onSampleLoaded,
     getWaveform: getWaveform,
