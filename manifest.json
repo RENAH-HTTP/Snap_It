@@ -1,0 +1,18 @@
+{
+  "name": "Snap It",
+  "short_name": "Snap It",
+  "description": "Scan physical objects to unlock drum samples, build a library, and make beats in a step sequencer.",
+  "start_url": "./app.html",
+  "display": "standalone",
+  "background_color": "#F4B015",
+  "theme_color": "#F4B015",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iI0ZBRjdGMCIgLz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjEyMCIgZmlsbD0iI0ZGNkIzNSIvPjwvc3ZnPg==",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

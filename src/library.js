@@ -20,19 +20,24 @@
 // -----------------------------------------------------------------------------
 
 const library = (function () {
-  // Where the unlocked list is stored in the browser's localStorage.
+  // Where the unlocked list is stored in the browser's localStorage. Each
+  // logged-in account gets its own list (Profile appends ':email'); guests
+  // share the plain key.
   const STORAGE_KEY = 'snapit.library.v1';
 
   let sampleMap = {};   // filled in by load()
   let unlocked = [];    // e.g. ["cup", "book"]
 
-  // Load the shipped sample map and any previously-saved unlocks.
-  // Uses fetch() because Electron serves the local files over file:// fine.
-  async function load() {
-    const response = await fetch('data/objectSampleMap.json');
-    sampleMap = await response.json();
+  function storageKey() {
+    const suffix = (window.Profile && Profile.storageSuffix && Profile.storageSuffix()) || '';
+    return STORAGE_KEY + suffix;
+  }
 
-    const saved = localStorage.getItem(STORAGE_KEY);
+  // (Re)read the unlocked list for the current profile. Called on startup and
+  // again whenever the player logs in/out, so the keypad swaps collections.
+  function reloadUnlocks() {
+    unlocked = [];
+    const saved = localStorage.getItem(storageKey());
     if (saved) {
       try {
         unlocked = JSON.parse(saved).unlocked || [];
@@ -41,6 +46,15 @@ const library = (function () {
         unlocked = [];
       }
     }
+  }
+
+  // Load the shipped sample map and any previously-saved unlocks.
+  // Uses fetch() because Electron serves the local files over file:// fine.
+  async function load() {
+    const response = await fetch('data/objectSampleMap.json');
+    sampleMap = await response.json();
+
+    reloadUnlocks();
 
     console.log(
       '[library] loaded map (' + Object.keys(sampleMap).length + ' entries), ' +
@@ -50,7 +64,7 @@ const library = (function () {
 
   // Save the unlocked list to localStorage.
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ unlocked: unlocked }));
+    localStorage.setItem(storageKey(), JSON.stringify({ unlocked: unlocked }));
     console.log('[library] saved. unlocked is now:', unlocked);
   }
 
@@ -67,7 +81,9 @@ const library = (function () {
   }
 
   function isUnlocked(objectType) {
-    return unlocked.indexOf(resolveKey(objectType)) !== -1;
+    const key = resolveKey(objectType);
+    if (key === '_default') return true; // Mystery Hit is always available
+    return unlocked.indexOf(key) !== -1;
   }
 
   function getSampleInfo(objectType) {
@@ -98,6 +114,7 @@ const library = (function () {
 
   return {
     load: load,
+    reloadUnlocks: reloadUnlocks,
     getUnlocked: getUnlocked,
     unlock: unlock,
     isUnlocked: isUnlocked,

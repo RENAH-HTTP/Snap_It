@@ -1,62 +1,326 @@
 {
-  "cup": {
-    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
-    "displayName": "Kick Warm Mixready Low Blow"
-  },
-  "mug": {
-    "sampleFile": "OLIVER_percussion_distressed_tom_C.wav",
-    "displayName": "Percussion Distressed Tom C"
-  },
-  "book": {
-    "sampleFile": "OLIVER_percussion_popper.wav",
-    "displayName": "Percussion Popper"
-  },
-  "box": {
-    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
-    "displayName": "Snare Modern Dnmo Block"
-  },
-  "bottle": {
-    "sampleFile": "OLIVER_snare_modern_mixready_layer_magic.wav",
-    "displayName": "Snare Modern Mixready Layer Magic"
-  },
-  "plant": {
-    "sampleFile": "OLIVER_snare_modern_mixready_metallic_thump.wav",
-    "displayName": "Snare Modern Mixready Metallic Thump"
-  },
-  "phone": {
-    "sampleFile": "OLIVER_snare_modern_punchy_metal_D#.wav",
-    "displayName": "Snare Modern Punchy Metal D#"
-  },
-  "laptop": {
-    "sampleFile": "OLIVER_snare_rimshot_hard.wav",
-    "displayName": "Snare Rimshot Hard"
-  },
-  "mouse": {
-    "sampleFile": "OLIVER_snare_short_mixready_dnb_vogue.wav",
-    "displayName": "Snare Short Mixready Dnb Vogue"
-  },
-  "keyboard": {
-    "sampleFile": "OLIVER_tom_electronic_cheap_F.wav",
-    "displayName": "Tom Electronic Cheap F"
-  },
-  "pen": {
-    "sampleFile": "Open hat 03 - TRACK UNO.wav",
-    "displayName": "Open Hat 03 Track Uno"
-  },
-  "headphones": {
-    "sampleFile": "Snare 04 - GOT IT GOOD.wav",
-    "displayName": "Snare 04 Got It Good"
-  },
-  "can": {
+  "person": {
     "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",
     "displayName": "Cowbell 01 Dysfunctional"
   },
-  "shoe": {
+  "bicycle": {
+    "sampleFile": "Hat_13_-_Gray_Area.wav",
+    "displayName": "Hat 13 Gray Area"
+  },
+  "car": {
+    "sampleFile": "Horn-y.wav",
+    "displayName": "Horn Y"
+  },
+  "motorcycle": {
+    "sampleFile": "OBJCont_Flask_glass_figuredbottle_realcork_liquid_remove_squeak_slosh_alt4_EWKR.wav",
+    "displayName": "Flask Glass Figuredbottle Re"
+  },
+  "airplane": {
+    "sampleFile": "OLIVER_bass_looncan_C.wav",
+    "displayName": "Bass Looncan C"
+  },
+  "bus": {
+    "sampleFile": "OLIVER_bass_mixready_underground_C.wav",
+    "displayName": "Bass Mixready Underground C"
+  },
+  "train": {
+    "sampleFile": "OLIVER_bass_plonk_C.wav",
+    "displayName": "Bass Plonk C"
+  },
+  "truck": {
+    "sampleFile": "OLIVER_bass_wow_C.wav",
+    "displayName": "Bass Wow C"
+  },
+  "boat": {
+    "sampleFile": "OLIVER_clap_electronic_biggy.wav",
+    "displayName": "Clap Electronic Biggy"
+  },
+  "traffic_light": {
+    "sampleFile": "OLIVER_hihat_dnmo_ping.wav",
+    "displayName": "Hihat Dnmo Ping"
+  },
+  "fire_hydrant": {
+    "sampleFile": "OLIVER_hihat_mixready_synthetic.wav",
+    "displayName": "Hihat Mixready Synthetic"
+  },
+  "stop_sign": {
+    "sampleFile": "OLIVER_hihat_mixready_thicc.wav",
+    "displayName": "Hihat Mixready Thicc"
+  },
+  "parking_meter": {
+    "sampleFile": "OLIVER_kick_dirty_bassy.wav",
+    "displayName": "Kick Dirty Bassy"
+  },
+  "bench": {
+    "sampleFile": "OLIVER_kick_dirty_crunch.wav",
+    "displayName": "Kick Dirty Crunch"
+  },
+  "bird": {
+    "sampleFile": "OLIVER_kick_hard_gravel.wav",
+    "displayName": "Kick Hard Gravel"
+  },
+  "cat": {
+    "sampleFile": "OLIVER_kick_punchy_sharp.wav",
+    "displayName": "Kick Punchy Sharp"
+  },
+  "dog": {
+    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
+    "displayName": "Kick Warm Mixready Low Blow"
+  },
+  "horse": {
+    "sampleFile": "OLIVER_kick_weird_lapsung_synth_kick_A.wav",
+    "displayName": "Kick Weird Lapsung Synth Kic"
+  },
+  "sheep": {
+    "sampleFile": "OLIVER_kick_weird_metal_bang.wav",
+    "displayName": "Kick Weird Metal Bang"
+  },
+  "cow": {
+    "sampleFile": "OLIVER_percussion_block.wav",
+    "displayName": "Percussion Block"
+  },
+  "elephant": {
+    "sampleFile": "OLIVER_percussion_distressed_tom_C.wav",
+    "displayName": "Percussion Distressed Tom C"
+  },
+  "bear": {
+    "sampleFile": "OLIVER_percussion_popper.wav",
+    "displayName": "Percussion Popper"
+  },
+  "zebra": {
+    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
+    "displayName": "Snare Modern Dnmo Block"
+  },
+  "giraffe": {
+    "sampleFile": "OLIVER_snare_modern_mixready_layer_magic.wav",
+    "displayName": "Snare Modern Mixready Layer"
+  },
+  "backpack": {
+    "sampleFile": "OLIVER_snare_modern_mixready_metallic_short.wav",
+    "displayName": "Snare Modern Mixready Metall"
+  },
+  "umbrella": {
+    "sampleFile": "OLIVER_snare_modern_mixready_metallic_thump.wav",
+    "displayName": "Snare Modern Mixready Metall"
+  },
+  "handbag": {
+    "sampleFile": "OLIVER_snare_modern_punchy_metal_D#.wav",
+    "displayName": "Snare Modern Punchy Metal D#"
+  },
+  "tie": {
+    "sampleFile": "OLIVER_snare_modern_punchy_metal_D.wav",
+    "displayName": "Snare Modern Punchy Metal D"
+  },
+  "suitcase": {
+    "sampleFile": "OLIVER_snare_noise_crack.wav",
+    "displayName": "Snare Noise Crack"
+  },
+  "frisbee": {
+    "sampleFile": "OLIVER_snare_punchy_beef.wav",
+    "displayName": "Snare Punchy Beef"
+  },
+  "skis": {
+    "sampleFile": "OLIVER_snare_rimshot_hard.wav",
+    "displayName": "Snare Rimshot Hard"
+  },
+  "snowboard": {
+    "sampleFile": "OLIVER_snare_short_mixready_dnb_vogue.wav",
+    "displayName": "Snare Short Mixready Dnb Vog"
+  },
+  "sports_ball": {
+    "sampleFile": "OLIVER_tom_electronic_cheap_F.wav",
+    "displayName": "Tom Electronic Cheap F"
+  },
+  "kite": {
     "sampleFile": "OOF.wav",
     "displayName": "Oof"
   },
+  "baseball_bat": {
+    "sampleFile": "Open hat 03 - TRACK UNO.wav",
+    "displayName": "Open Hat 03 Track Uno"
+  },
+  "baseball_glove": {
+    "sampleFile": "Open_hat_03_-_TRACK_UNO.wav",
+    "displayName": "Open Hat 03 Track Uno"
+  },
+  "skateboard": {
+    "sampleFile": "Open_hat_07_-_Vex_Oh.wav",
+    "displayName": "Open Hat 07 Vex Oh"
+  },
+  "surfboard": {
+    "sampleFile": "Snare 04 - GOT IT GOOD.wav",
+    "displayName": "Snare 04 Got It Good"
+  },
+  "tennis_racket": {
+    "sampleFile": "Snare_04_-_GOT_IT_GOOD.wav",
+    "displayName": "Snare 04 Got It Good"
+  },
+  "bottle": {
+    "sampleFile": "bass_a_04.wav",
+    "displayName": "Bass A 04"
+  },
+  "wine_glass": {
+    "sampleFile": "bass_b_07.wav",
+    "displayName": "Bass B 07"
+  },
+  "cup": {
+    "sampleFile": "bass_c_01.wav",
+    "displayName": "Bass C 01"
+  },
+  "fork": {
+    "sampleFile": "bass_d_05.wav",
+    "displayName": "Bass D 05"
+  },
+  "knife": {
+    "sampleFile": "bass_e_02.wav",
+    "displayName": "Bass E 02"
+  },
+  "spoon": {
+    "sampleFile": "bass_f_06.wav",
+    "displayName": "Bass F 06"
+  },
+  "bowl": {
+    "sampleFile": "bass_g_03.wav",
+    "displayName": "Bass G 03"
+  },
+  "banana": {
+    "sampleFile": "clap_layer_01.wav",
+    "displayName": "Clap Layer 01"
+  },
+  "apple": {
+    "sampleFile": "clap_layer_02.wav",
+    "displayName": "Clap Layer 02"
+  },
+  "sandwich": {
+    "sampleFile": "clap_layer_03.wav",
+    "displayName": "Clap Layer 03"
+  },
+  "orange": {
+    "sampleFile": "cowbell_metal_01.wav",
+    "displayName": "Cowbell Metal 01"
+  },
+  "broccoli": {
+    "sampleFile": "cowbell_metal_02.wav",
+    "displayName": "Cowbell Metal 02"
+  },
+  "carrot": {
+    "sampleFile": "cowbell_metal_03.wav",
+    "displayName": "Cowbell Metal 03"
+  },
+  "hot_dog": {
+    "sampleFile": "hat_closed_01.wav",
+    "displayName": "Hat Closed 01"
+  },
+  "pizza": {
+    "sampleFile": "hat_closed_02.wav",
+    "displayName": "Hat Closed 02"
+  },
+  "donut": {
+    "sampleFile": "hat_open_04.wav",
+    "displayName": "Hat Open 04"
+  },
+  "cake": {
+    "sampleFile": "hat_open_05.wav",
+    "displayName": "Hat Open 05"
+  },
+  "chair": {
+    "sampleFile": "hat_pedal_06.wav",
+    "displayName": "Hat Pedal 06"
+  },
+  "couch": {
+    "sampleFile": "hat_tick_03.wav",
+    "displayName": "Hat Tick 03"
+  },
+  "potted_plant": {
+    "sampleFile": "kick_analog_01.wav",
+    "displayName": "Kick Analog 01"
+  },
+  "bed": {
+    "sampleFile": "kick_boom_06.wav",
+    "displayName": "Kick Boom 06"
+  },
+  "dining_table": {
+    "sampleFile": "kick_click_07.wav",
+    "displayName": "Kick Click 07"
+  },
+  "toilet": {
+    "sampleFile": "kick_deep_02.wav",
+    "displayName": "Kick Deep 02"
+  },
+  "tv": {
+    "sampleFile": "kick_punch_03.wav",
+    "displayName": "Kick Punch 03"
+  },
+  "laptop": {
+    "sampleFile": "kick_sub_04.wav",
+    "displayName": "Kick Sub 04"
+  },
+  "mouse": {
+    "sampleFile": "kick_tight_05.wav",
+    "displayName": "Kick Tight 05"
+  },
+  "remote": {
+    "sampleFile": "kick_warm_08.wav",
+    "displayName": "Kick Warm 08"
+  },
+  "keyboard": {
+    "sampleFile": "perc_blip_01.wav",
+    "displayName": "Perc Blip 01"
+  },
+  "cell_phone": {
+    "sampleFile": "perc_blip_02.wav",
+    "displayName": "Perc Blip 02"
+  },
+  "microwave": {
+    "sampleFile": "perc_blip_03.wav",
+    "displayName": "Perc Blip 03"
+  },
+  "oven": {
+    "sampleFile": "perc_blip_04.wav",
+    "displayName": "Perc Blip 04"
+  },
+  "toaster": {
+    "sampleFile": "perc_blip_05.wav",
+    "displayName": "Perc Blip 05"
+  },
+  "sink": {
+    "sampleFile": "perc_blip_06.wav",
+    "displayName": "Perc Blip 06"
+  },
+  "refrigerator": {
+    "sampleFile": "perc_blip_07.wav",
+    "displayName": "Perc Blip 07"
+  },
+  "book": {
+    "sampleFile": "perc_blip_08.wav",
+    "displayName": "Perc Blip 08"
+  },
+  "clock": {
+    "sampleFile": "snare_brush_07.wav",
+    "displayName": "Snare Brush 07"
+  },
+  "vase": {
+    "sampleFile": "snare_clap_04.wav",
+    "displayName": "Snare Clap 04"
+  },
+  "scissors": {
+    "sampleFile": "snare_crack_01.wav",
+    "displayName": "Snare Crack 01"
+  },
+  "teddy_bear": {
+    "sampleFile": "snare_deep_08.wav",
+    "displayName": "Snare Deep 08"
+  },
+  "hair_drier": {
+    "sampleFile": "snare_fat_02.wav",
+    "displayName": "Snare Fat 02"
+  },
+  "toothbrush": {
+    "sampleFile": "snare_noise_06.wav",
+    "displayName": "Snare Noise 06"
+  },
   "_default": {
-    "sampleFile": "Horn-y.wav",
-    "displayName": "Horn Y"
+    "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",
+    "displayName": "Mystery Hit"
   }
 }

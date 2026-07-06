@@ -12,21 +12,25 @@ window.Vision = (() => {
   // Classes we never react to or draw (people walk in front of the camera a lot).
   const IGNORED_CLASSES = { 'person': true };
 
-  // Maps COCO-SSD class names → objectSampleMap.json keys.
-  const COCO_TO_SAMPLE = {
-    'cup':          'cup',
-    'wine glass':   'mug',
-    'book':         'book',
-    'suitcase':     'box',
-    'bottle':       'bottle',
-    'potted plant': 'plant',
-    'cell phone':   'phone',
-    'laptop':       'laptop',
-    'mouse':        'mouse',
-    'keyboard':     'keyboard',
-    'scissors':     'pen',
-    'remote':       'can',
-  };
+  // Every COCO-SSD class maps to its own collectible object. The object key is
+  // just the class name slugged ("wine glass" -> "wine_glass"), matching the
+  // keys generated in data/objectSampleMap.json by build-objects.js.
+  const COCO_CLASSES = [
+    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck',
+    'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
+    'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
+    'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+    'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
+    'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+    'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+    'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+    'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+    'hair drier', 'toothbrush',
+  ];
+  const COCO_TO_SAMPLE = {};
+  COCO_CLASSES.forEach(function (c) { COCO_TO_SAMPLE[c] = c.replace(/\s+/g, '_'); });
 
   let videoEl  = null;
   let canvasEl = null;
@@ -34,7 +38,52 @@ window.Vision = (() => {
   let stream   = null;
   let model    = null;
   let running  = false;
+  let currentDeviceId = null;
   const lastScan = {};   // sampleKey -> timestamp, for per-object debounce
+
+  // ── camera plumbing ─────────────────────────────────────────────────────────
+
+  async function openStream(deviceId) {
+    const constraints = deviceId
+      ? { video: { deviceId: { exact: deviceId } }, audio: false }
+      : { video: true, audio: false };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoEl.srcObject = stream;
+    await new Promise(resolve => videoEl.addEventListener('loadedmetadata', resolve, { once: true }));
+    await videoEl.play();
+    const track = stream.getVideoTracks()[0];
+    currentDeviceId =
+      (track && track.getSettings && track.getSettings().deviceId) || deviceId || null;
+  }
+
+  // Cameras available to the page (labels appear once permission is granted).
+  async function listCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+        .filter(d => d.kind === 'videoinput')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || ('Camera ' + (i + 1)) }));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Swap to another camera; the detection loop keeps running on the new feed.
+  async function setCamera(deviceId) {
+    if (!videoEl || !deviceId || deviceId === currentDeviceId) return;
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    try {
+      await openStream(deviceId);
+      setStatus('Ready — point camera at an object');
+      console.log('[Vision] switched camera to', deviceId);
+    } catch (err) {
+      console.error('[Vision] camera switch failed:', err);
+      setStatus('Camera switch failed — ' + err.message);
+    }
+  }
 
   // ── public ──────────────────────────────────────────────────────────────────
 
@@ -46,10 +95,7 @@ window.Vision = (() => {
     setStatus('Starting camera…');
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      videoEl.srcObject = stream;
-      await new Promise(resolve => videoEl.addEventListener('loadedmetadata', resolve, { once: true }));
-      await videoEl.play();
+      await openStream(null);
       console.log('[Vision] camera started');
     } catch (err) {
       console.error('[Vision] camera error:', err);
@@ -172,5 +218,8 @@ window.Vision = (() => {
     if (statusEl) statusEl.textContent = msg;
   }
 
-  return { start, stop };
+  return {
+    start, stop, listCameras, setCamera,
+    currentCamera: () => currentDeviceId,
+  };
 })();

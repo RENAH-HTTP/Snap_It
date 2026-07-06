@@ -37,6 +37,7 @@ const audioEngine = (function () {
   let analyser = null;      // Tone.Analyser tapping the master (oscilloscope)
   let sampleLoadedCb = null;// optional UI callback fired when a sample finishes loading
   let keyTranspose = 0;     // global KEY transpose, semitones (-12..+12)
+  let fxChain = null;       // master FX rack driven by the XY morph pad
 
   // ---- setup -----------------------------------------------------------------
 
@@ -45,6 +46,24 @@ const audioEngine = (function () {
   // and is skipped at playback time (the user is told to drop WAVs in /samples).
   async function init() {
     const map = library.getAllSampleInfo();
+
+    // Master FX rack, performed live from the XY morph pad. Chain:
+    //   every sample -> filter -> drive -> crusher -> echo -> reverb -> out.
+    // Everything rests at wet 0 (filter wide open), so the rack is fully
+    // transparent until the player grabs the pad.
+    fxChain = {
+      filter: new Tone.Filter(18000, 'lowpass'),
+      drive:  new Tone.Distortion(0.7),
+      crush:  new Tone.BitCrusher(4),
+      delay:  new Tone.FeedbackDelay('8n', 0.4),
+      reverb: new Tone.Reverb({ decay: 2.8 }),
+    };
+    fxChain.drive.wet.value = 0;
+    fxChain.crush.wet.value = 0;
+    fxChain.delay.wet.value = 0;
+    fxChain.reverb.wet.value = 0;
+    fxChain.filter.chain(fxChain.drive, fxChain.crush, fxChain.delay,
+                         fxChain.reverb, Tone.getDestination());
 
     Object.keys(map).forEach(function (objectType) {
       // encodeURIComponent so filenames with '#' (e.g. "..._D#.wav") aren't cut
@@ -55,16 +74,19 @@ const audioEngine = (function () {
       // (instant attack, full sustain) until the user shapes it on the card.
       settings[objectType] = { attack: 0.005, decay: 0.20, sustain: 1.0, release: 0.30, cents: 0 };
 
-      // player -> amplitude envelope -> destination, so ADSR actually shapes it.
+      // player -> amplitude envelope -> FX bus, so ADSR actually shapes it.
+      // The envelope's gain sits at 0 until triggerAttackRelease opens it, so a
+      // pad with sustain pulled to 0 is genuinely silent.
       const env = new Tone.AmplitudeEnvelope({
         attack: settings[objectType].attack,
         decay: settings[objectType].decay,
         sustain: settings[objectType].sustain,
         release: settings[objectType].release,
-      }).toDestination();
+      });
+      env.connect(fxChain.filter);
       envs[objectType] = env;
 
-      players[objectType] = new Tone.Player({
+      const player = new Tone.Player({
         url: url,
         onload: function () {
           console.log('[audioEngine] loaded', url);
@@ -75,7 +97,9 @@ const audioEngine = (function () {
           console.warn('[audioEngine] missing sample:', url,
             '- drop the WAV into /samples to hear it');
         },
-      }).connect(env);
+      });
+      player.connect(env);
+      players[objectType] = player;
     });
 
     // Tap the master output for the sequencer oscilloscope. The analyser only
@@ -101,9 +125,12 @@ const audioEngine = (function () {
         tracks.forEach(function (track) {
           if (track.muted) return;
           if (!track.steps[step]) return;
-          // Each step can carry its own pitch offset (semitones -> cents).
+          // Each step can carry its own pitch offset (semitones -> cents) and a
+          // gate length in steps (how long the note is held — a "note hold").
           const extraCents = (track.stepPitch[step] || 0) * 100;
-          triggerSample(track.objectType, time, extraCents, track.volume);
+          const steps16 = Tone.Time('16n').toSeconds();
+          const gateSec = Math.max(1, track.stepLen[step] || 1) * steps16;
+          triggerSample(track.objectType, time, extraCents, track.volume, track.snd, gateSec);
         });
 
         // Tell the UI which step is playing, synced to the visual frame.
@@ -140,44 +167,84 @@ const audioEngine = (function () {
     return Math.pow(2, cents / 1200);
   }
 
-  // Fire a sample once with its current ADSR + tune, plus any extra pitch
-  // (cents) for this hit. `time` is optional (omit for "now", e.g. preview).
-  // `gain` (0..1) is the track's mixer level; omitted = full volume.
-  function triggerSample(objectType, time, extraCents, gain) {
-    const key = library.resolveKey(objectType);
+  // Pick a random loaded sample key (used by the "Mystery Hit" — you never
+  // know which sound you'll get). Excludes the mystery entry itself.
+  function pickRandomLoadedKey() {
+    const keys = Object.keys(players).filter(function (k) {
+      return k !== '_default' && players[k] && players[k].loaded;
+    });
+    if (!keys.length) return null;
+    return keys[Math.floor(Math.random() * keys.length)];
+  }
+
+  // Fire a sample once with a given sound shaping, plus any extra pitch (cents)
+  // for this hit. `time` is optional (omit for "now", e.g. preview). `gain`
+  // (0..1) is the mixer level; omitted = full. `snd` is the per-pad/track sound
+  // ({attack,decay,sustain,release,cents}); omitted falls back to the sample's
+  // own defaults, so two pads on the same sample can be tuned independently.
+  function triggerSample(objectType, time, extraCents, gain, snd, gateSec) {
+    let key = library.resolveKey(objectType);
+    // Mystery Hit: resolve to a random real sample every single time.
+    if (key === '_default') {
+      const r = pickRandomLoadedKey();
+      if (r) key = r;
+    }
     const player = players[key];
     const env = envs[key];
-    const s = settings[key];
+    const eff = snd || settings[key] || {};
     if (!player || !player.loaded) return;
 
     // Use an explicit time so rapid retriggers always advance on the clock.
     const t = (time === undefined) ? Tone.now() : time;
 
+    // Apply this hit's ADSR to the (shared) envelope node just before firing.
+    // Ramp times are floored to a tiny value: a Tone.Envelope with a 0-length
+    // decay skips the ramp and stays pinned at full level, which made "all
+    // faders at 0" play the whole sample. A ~1ms floor forces the ramp so
+    // sustain: 0 genuinely closes the sound to silence.
+    if (env) {
+      env.attack  = Math.max(0.001, +eff.attack  || 0);
+      env.decay   = Math.max(0.001, +eff.decay   || 0);
+      env.sustain = Math.max(0, Math.min(1, eff.sustain == null ? 1 : +eff.sustain));
+      env.release = Math.max(0.001, +eff.release  || 0);
+    }
+
     // KEY transpose shifts every hit globally, on top of tune + step pitch.
-    const cents = (s ? s.cents : 0) + (extraCents || 0) + keyTranspose * 100;
+    const cents = (eff.cents || 0) + (extraCents || 0) + keyTranspose * 100;
     player.playbackRate = centsToRate(cents);
     player.volume.value = Tone.gainToDb(gain == null ? 1 : Math.max(0.0001, gain));
 
-    // Hold the envelope open for the (rate-adjusted) length of the sample.
-    const dur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
+    // How long to hold the note: the sample's own length, or an explicit gate
+    // (the per-step "note hold") when the sequencer passes one.
+    const sampleDur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
+    const hold = gateSec ? Math.max(0.02, gateSec) : sampleDur;
     // triggerAttackRelease retriggers cleanly on its own (it cancels and holds
     // internally), so the ADSR re-shapes every hit — no manual cancel needed.
-    if (env) env.triggerAttackRelease(dur, t);
+    if (env) env.triggerAttackRelease(hold, t);
+
+    // If the gate is longer than the sample, loop it so the note sustains for
+    // the whole hold; otherwise play the one-shot through once.
+    const wantLoop = !!gateSec && gateSec > sampleDur * 1.05;
+    try { player.loop = wantLoop; } catch (e) {}
 
     // Stop any current playback then start fresh. stop() throws if not playing,
     // start() throws if already started — both are fine to ignore.
     try { player.stop(t); } catch (e) {}
     try { player.start(t); } catch (e) {}
+    // Schedule the note off at the end of its gate (covers the looped case).
+    if (gateSec) { try { player.stop(t + hold + 0.02); } catch (e) {} }
   }
 
   // ---- public actions --------------------------------------------------------
 
-  // Play a single sample once (used by the library preview button).
-  async function previewSample(objectType) {
+  // Play a single sample once (used by the library preview button). `snd` is
+  // the optional per-pad sound shaping so a pad previews with its own tuning.
+  async function previewSample(objectType, snd) {
     await ensureAudioStarted();
     const key = library.resolveKey(objectType);
-    if (players[key] && players[key].loaded) {
-      triggerSample(key);
+    // Mystery routes through triggerSample which randomises the real sound.
+    if (key === '_default' || (players[key] && players[key].loaded)) {
+      triggerSample(objectType, undefined, 0, undefined, snd);
       console.log('[audioEngine] preview', key);
     } else {
       console.warn('[audioEngine] cannot preview', key, '- sample not loaded');
@@ -186,16 +253,25 @@ const audioEngine = (function () {
 
   // Add a new sequencer row for the given sample. Returns its track id.
   // displayName is stored on the track so a pattern snapshot is self-contained —
-  // a jam peer can render/label the row without any local lookup.
-  function addTrackToSequencer(objectType, displayName) {
+  // a jam peer can render/label the row without any local lookup. `by` is the
+  // display name of whoever added the track (shown in multiplayer sessions).
+  function addTrackToSequencer(objectType, displayName, by, snd, srcPad) {
     const key = library.resolveKey(objectType);
     const info = library.getSampleInfo(key);
     const track = {
       id: nextTrackId++,
       objectType: key,
       displayName: displayName || (info && info.displayName) || key,
+      by: by || null,
+      // The pad this row was created from — lets live SOUND-panel edits flow to
+      // the sequencer (see updateTrackSndForPad). Local only; never serialised.
+      srcPad: srcPad || null,
+      // Per-track sound shaping (from the pad it was added from), so identical
+      // samples on different tracks keep independent tuning/ADSR.
+      snd: snd ? Object.assign({}, snd) : Object.assign({}, settings[key]),
       steps: new Array(STEP_COUNT).fill(false),
       stepPitch: new Array(STEP_COUNT).fill(0), // per-step pitch offset, semitones
+      stepLen: new Array(STEP_COUNT).fill(1),   // per-step gate length, in steps
       muted: false,
       volume: 0.8, // mixer level 0..1 (0.8 ≈ -2 dB leaves headroom by default)
     };
@@ -344,6 +420,15 @@ const audioEngine = (function () {
     env[field] = value;
   }
 
+  // Push a pad's live sound (ADSR + tune) onto every sequencer track that was
+  // created from that pad, so editing the SOUND panel changes the beat you hear.
+  function updateTrackSndForPad(srcPad, snd) {
+    if (!srcPad) return;
+    tracks.forEach(function (t) {
+      if (t.srcPad === srcPad) t.snd = Object.assign({}, snd);
+    });
+  }
+
   // Tune the sample, clamped to ±4800 cents (±48 semitones).
   function setSampleCents(objectType, cents) {
     const key = library.resolveKey(objectType);
@@ -365,6 +450,20 @@ const audioEngine = (function () {
   function getStepPitch(trackId, stepIndex) {
     const track = findTrack(trackId);
     return track ? (track.stepPitch[stepIndex] || 0) : 0;
+  }
+
+  // Per-step gate length (how many steps the note is held). Clamped 1..STEP_COUNT.
+  function setStepLen(trackId, stepIndex, len) {
+    const track = findTrack(trackId);
+    if (!track) return 1;
+    const clamped = Math.max(1, Math.min(STEP_COUNT, Math.round(len) || 1));
+    track.stepLen[stepIndex] = clamped;
+    return clamped;
+  }
+
+  function getStepLen(trackId, stepIndex) {
+    const track = findTrack(trackId);
+    return track ? (track.stepLen[stepIndex] || 1) : 1;
   }
 
   function getStepOn(trackId, stepIndex) {
@@ -390,6 +489,45 @@ const audioEngine = (function () {
     return analyser;
   }
 
+  // ---- XY morph FX ---------------------------------------------------------------
+  // The XY pad is a morph field: each effect owns a zone (matching the coloured
+  // blocks in the UI), and the closer the cursor sits to a zone's centre, the
+  // harder that effect is pushed. Positions between zones blend effects.
+  const FX_ZONES = [
+    { fx: 'drive',  cx: 0.235, cy: 0.225 },  // orange, diagonal stripes
+    { fx: 'filter', cx: 0.735, cy: 0.185 },  // blue, vertical lines
+    { fx: 'crush',  cx: 0.630, cy: 0.410 },  // tan bricks
+    { fx: 'reverb', cx: 0.895, cy: 0.685 },  // magenta, horizontal lines
+    { fx: 'delay',  cx: 0.395, cy: 0.725 },  // green dots
+  ];
+
+  function applyFxWeight(name, w) {
+    const fx = fxChain[name];
+    if (name === 'filter') {
+      // weight sweeps the cutoff from wide open (18 kHz) down to 300 Hz
+      fx.frequency.rampTo(18000 * Math.pow(300 / 18000, w), 0.06);
+    } else {
+      const max = { drive: 0.9, crush: 0.85, delay: 0.65, reverb: 0.75 }[name];
+      fx.wet.rampTo(w * max, 0.06);
+    }
+  }
+
+  // x/y are 0..1 across the pad. Short ramps keep the sweeps clickless.
+  function setFxMorph(x, y) {
+    if (!fxChain) return;
+    FX_ZONES.forEach(function (z) {
+      const d = Math.hypot(x - z.cx, y - z.cy);
+      const w = Math.pow(Math.max(0, 1 - d / 0.5), 1.4); // silent past half a pad
+      applyFxWeight(z.fx, w);
+    });
+  }
+
+  // Everything dry again (double-click on the pad).
+  function fxBypass() {
+    if (!fxChain) return;
+    FX_ZONES.forEach(function (z) { applyFxWeight(z.fx, 0); });
+  }
+
   // Turn every step of every track off (the "Clear" button).
   function clearAllSteps() {
     tracks.forEach(function (track) {
@@ -408,8 +546,11 @@ const audioEngine = (function () {
         id: t.id,
         objectType: t.objectType,
         displayName: t.displayName,
+        by: t.by || null,
+        snd: t.snd ? Object.assign({}, t.snd) : null,
         steps: t.steps.slice(),
         stepPitch: t.stepPitch.slice(),
+        stepLen: t.stepLen.slice(),
         muted: t.muted,
         volume: t.volume == null ? 0.8 : t.volume,
       };
@@ -436,14 +577,19 @@ const audioEngine = (function () {
     snap.tracks.forEach(function (t) {
       const steps = new Array(STEP_COUNT).fill(false);
       const pitch = new Array(STEP_COUNT).fill(0);
+      const lens = new Array(STEP_COUNT).fill(1);
       (t.steps || []).forEach(function (v, i) { if (i < STEP_COUNT) steps[i] = !!v; });
       (t.stepPitch || []).forEach(function (v, i) { if (i < STEP_COUNT) pitch[i] = v || 0; });
+      (t.stepLen || []).forEach(function (v, i) { if (i < STEP_COUNT) lens[i] = Math.max(1, v || 1); });
       tracks.push({
         id: t.id,
         objectType: t.objectType,
         displayName: t.displayName || t.objectType,
+        by: t.by || null,
+        snd: t.snd ? Object.assign({}, t.snd) : Object.assign({}, settings[library.resolveKey(t.objectType)]),
         steps: steps,
         stepPitch: pitch,
+        stepLen: lens,
         muted: !!t.muted,
         volume: t.volume == null ? 0.8 : Math.max(0, Math.min(1, +t.volume || 0)),
       });
@@ -496,20 +642,36 @@ const audioEngine = (function () {
     if (!wasPlaying) transport.stop();
     exporting = false;
 
-    // Write the blob to disk (nodeIntegration gives us fs directly).
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fileName = 'snap-it-beat-' + stamp + '.webm';
+
+    // In Electron (nodeIntegration) write straight into Downloads; in a plain
+    // browser hand the file to the download manager instead.
     try {
       const fs = require('fs');
       const path = require('path');
       const os = require('os');
       const buffer = Buffer.from(await blob.arrayBuffer());
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const dest = path.join(os.homedir(), 'Downloads', 'snap-it-beat-' + stamp + '.webm');
+      const dest = path.join(os.homedir(), 'Downloads', fileName);
       fs.writeFileSync(dest, buffer);
       console.log('[audioEngine] exported beat to', dest);
       return dest;
     } catch (err) {
-      console.error('[audioEngine] export failed to write file', err);
-      return null;
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+        console.log('[audioEngine] exported beat as browser download:', fileName);
+        return fileName;
+      } catch (err2) {
+        console.error('[audioEngine] export failed', err2);
+        return null;
+      }
     }
   }
 
@@ -541,11 +703,16 @@ const audioEngine = (function () {
     onSampleLoaded: onSampleLoaded,
     getWaveform: getWaveform,
     getAnalyser: getAnalyser,
+    setFxMorph: setFxMorph,
+    fxBypass: fxBypass,
     getSampleSettings: getSampleSettings,
     setSampleEnv: setSampleEnv,
     setSampleCents: setSampleCents,
+    updateTrackSndForPad: updateTrackSndForPad,
     setStepPitch: setStepPitch,
     getStepPitch: getStepPitch,
+    setStepLen: setStepLen,
+    getStepLen: getStepLen,
     getStepOn: getStepOn,
     clearAllSteps: clearAllSteps,
     exportLoop: exportLoop,

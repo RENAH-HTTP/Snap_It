@@ -2,17 +2,20 @@
   "name": "snap-it",
   "version": "0.1.0",
   "description": "Scan physical objects to unlock drum samples, build a library, and make beats in a step sequencer.",
-  "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron ."
+    "start": "serve .",
+    "build": "node build.js"
   },
   "author": "SoundHunter Team",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^31.7.7"
+    "serve": "^14.2.6"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/camera": "^8.2.0",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.20.0",
     "firebase": "^10.12.0",

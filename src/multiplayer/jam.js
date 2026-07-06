@@ -55,6 +55,8 @@ window.Jam = (() => {
   let outputId = 'host';
 
   function machineName() {
+    // A logged-in player's chosen name beats the machine's hostname.
+    if (window.Profile && Profile.current && Profile.current()) return Profile.displayName();
     try { return require('os').hostname(); } catch (e) { return 'Player'; }
   }
 
@@ -153,6 +155,11 @@ window.Jam = (() => {
         fire('pitch', a.trackId, a.i, v);
         break;
       }
+      case 'len': {
+        const l = audioEngine.setStepLen(a.trackId, a.i, a.val);
+        fire('len', a.trackId, a.i, l);
+        break;
+      }
       case 'mute': {
         audioEngine.setTrackMute(a.trackId, a.muted);
         fire('mute', a.trackId, a.muted);
@@ -185,7 +192,7 @@ window.Jam = (() => {
 
   function applyStructural(p) {
     if (p.kind === 'add') {
-      audioEngine.addTrackToSequencer(p.objectType, p.displayName);
+      audioEngine.addTrackToSequencer(p.objectType, p.displayName, p.by, p.snd, p.srcPad);
     } else if (p.kind === 'remove') {
       audioEngine.removeTrack(p.trackId);
     } else if (p.kind === 'clear') {
@@ -288,6 +295,10 @@ window.Jam = (() => {
     dispatchAction({ kind: 'pitch', trackId: trackId, i: i, val: val });
   }
 
+  function setStepLen(trackId, i, val) {
+    dispatchAction({ kind: 'len', trackId: trackId, i: i, val: val });
+  }
+
   function setMute(trackId, muted) {
     dispatchAction({ kind: 'mute', trackId: trackId, muted: muted });
   }
@@ -308,8 +319,13 @@ window.Jam = (() => {
     dispatchAction({ kind: 'key', st: st });
   }
 
-  function addTrack(objectType, displayName) {
-    dispatchStructural({ kind: 'add', objectType: objectType, displayName: displayName });
+  function addTrack(objectType, displayName, snd, srcPad) {
+    // Tag the track with who added it, so jam peers see it in the sequencer.
+    // srcPad is a local pad id (only meaningful on this machine).
+    dispatchStructural({
+      kind: 'add', objectType: objectType, displayName: displayName,
+      by: machineName(), snd: snd || null, srcPad: srcPad || null,
+    });
   }
 
   function removeTrack(trackId) {
@@ -364,6 +380,7 @@ window.Jam = (() => {
     // sequencer edits
     toggleStep: toggleStep,
     setStepPitch: setStepPitch,
+    setStepLen: setStepLen,
     setMute: setMute,
     setVolume: setVolume,
     setBpm: setBpm,

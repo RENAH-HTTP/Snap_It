@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#F1EEE5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Snap It</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ==================================================================== */
+    /* SNAP IT — the studio. Shares the landing page's identity: an amber    */
+    /* frame, bold black type, a faint grid, and floating rounded panels.    */
+    /* ==================================================================== */
+    :root {
+      --font:   "Inter", system-ui, -apple-system, sans-serif;
+
+      --frame:  #E7DEC8;   /* warm cream frame (page / bars)          */
+      --paper:  #F7F3E9;   /* panel-inner / cream surfaces            */
+      --panel:  #F1EBDC;   /* floating panel plates                   */
+      --cell:   #F9F5EC;   /* keypad cells, chips                     */
+      --ink:    #17171A;   /* near-black ink, headings, thick borders */
+      --label:  #8C8672;   /* small uppercase captions                */
+
+      /* our accent palette (shared with the landing page) */
+      --orange:  #E67E22;  /* primary accent — the logo's eye iris     */
+      --coral:   #E8503A;
+      --indigo:  #2F5DE0;
+      --violet:  #7C5CFF;
+      --lime:    #3FA34D;
+      --gold:    #E0A32E;
+      --pink:    #C6407E;
+      --sky:     #6FA8D6;
+      /* legacy names kept so existing rules/JS colours still resolve   */
+      --navy:    #2F5DE0;
+      --blue:    #2F5DE0;
+      --magenta: #C6407E;
+      --steel:   #4C86AB;
+      --green:   #3FA34D;
+      --mustard: #E0A32E;
+      --red:     #E8503A;
+      --purple:  #7C5CFF;
+      --tr-idle: #CDC3AC;  /* inactive track buttons                  */
+      --fx-pink: #C6407E;  /* FX track button                         */
+
+      --hair:      rgba(23,23,26,.9);    /* crisp grid hairlines  */
+      --hair-soft: rgba(23,23,26,.16);   /* soft borders          */
+
+      --step: 42px; --step-gap: 4px; --seq-label-w: 150px;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; background: var(--frame); }
+    body {
+      font-family: var(--font); font-weight: 500; color: var(--ink);
+      background: var(--frame);
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+    button { font-family: inherit; border: none; background: none; cursor: pointer; color: inherit; }
+    button:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #CFCaBB; border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* Numeric readouts — heavy tabular numerals (our look, not a 7-seg LCD) */
+    .seg-row { display: inline-flex; align-items: baseline; line-height: 1; }
+    .rd {
+      font-weight: 800; font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum" 1; letter-spacing: .005em;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* TOP BAR                                                          */
+    /* ---------------------------------------------------------------- */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+      min-height: 60px; padding: 10px 16px;
+      background: var(--frame); box-shadow: inset 0 -1px 0 rgba(20,20,20,.14);
+    }
+    /* logo lockup — the Snap It eye mark + wordmark */
+    .app-logo {
+      display: inline-flex; align-items: center; gap: 9px; margin-right: 8px;
+      font-size: 18px; font-weight: 900; letter-spacing: -.03em; color: var(--ink);
+      text-decoration: none;
+    }
+    .app-logo .mark { width: 32px; height: 32px; display: block; flex-shrink: 0; }
+    .app-logo .pd { color: var(--orange); }
+    /* on phones the wordmark crowds the bar — show just the eye icon */
+    @media (max-width: 620px) { .app-word { display: none; } .app-logo { margin: 0; } }
+
+    .transport, .top-right { display: flex; align-items: center; gap: 8px; }
+    .top-right { margin-left: auto; }
+
+    /* phone: brand on its own centred row, controls centred below it */
+    @media (max-width: 620px) {
+      .topbar { justify-content: center; row-gap: 10px; padding: 10px 12px; }
+      .app-logo { flex-basis: 100%; justify-content: center; margin: 0; }
+      .transport { order: 1; }
+      .bpm-chip { order: 2; }
+      .top-right { order: 3; margin-left: 0; }
+    }
+
+    .tb {
+      width: 38px; height: 38px; border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      transition: filter .12s, background .12s;
+    }
+    .tb:hover { filter: brightness(.94); }
+
+    .tb-rec { background: var(--orange); }
+    .tb-rec .rec-dot { width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+    .tb-rec.recording { animation: recblink .5s ease-in-out infinite alternate; }
+    @keyframes recblink { from { filter: brightness(1); } to { filter: brightness(1.45); } }
+
+    .tb-play svg, .tb-stop svg { display: block; }
+    .tb-play svg path { fill: var(--ink); transition: fill .12s; }
+    .tb-play.playing svg path { fill: var(--green); }
+    .tb-stop svg rect { fill: var(--ink); }
+
+    .tb-clear {
+      width: auto; height: 30px; padding: 0 10px; border-radius: 8px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      font-size: 11px; font-weight: 800; letter-spacing: .08em;
+    }
+
+    .bpm-chip {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; height: 44px; padding: 0 14px; border-radius: 10px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      cursor: ns-resize; touch-action: none;
+    }
+    .bpm-chip .bc-cap { font-size: 8px; font-weight: 800; letter-spacing: .18em; color: var(--label); }
+
+    .tb-jam { background: var(--green); position: relative; }
+    .tb-jam svg { display: block; }
+    .jam-dot {
+      position: absolute; top: -3px; right: -3px; width: 11px; height: 11px;
+      border-radius: 50%; background: transparent; border: 2px solid var(--paper);
+      transition: background .15s;
+    }
+    .jam-dot.on { background: #35C77E; }
+    .jam-dot.silent { background: var(--mustard); }
+
+    .tb-guide { width: auto; padding: 0 6px; font-size: 12px; font-weight: 800;
+                letter-spacing: .06em; color: var(--navy); }
+    .tb-gear { background: #D3CFC6; border-radius: 50%; }
+    .tb-gear svg { display: block; }
+
+    /* ---------------------------------------------------------------- */
+    /* PANEL DECK — responsive grid                                     */
+    /* ---------------------------------------------------------------- */
+    .deck {
+      display: grid; gap: 16px; padding: 16px;
+      width: 100%; margin: 0 auto;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "video" "keypad" "sound" "mixer" "tempo" "seq" "xy";
+    }
+    @media (min-width: 700px) and (max-width: 1019px) {
+      .deck {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "video  mixer"
+          "keypad sound"
+          "tempo  xy"
+          "seq    seq";
+      }
+    }
+    @media (min-width: 1020px) {
+      .deck {
+        max-width: 1780px;
+        grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
+        grid-template-areas:
+          "video  mixer  tempo"
+          "keypad sound  xy"
+          "seq    seq    seq";
+      }
+    }
+    .p-video  { grid-area: video; }
+    .p-mixer  { grid-area: mixer; }
+    .p-tempo  { grid-area: tempo; }
+    .p-keypad { grid-area: keypad; }
+    .p-sound  { grid-area: sound; }
+    .p-seq    { grid-area: seq; }
+    .p-xy     { grid-area: xy; }
+
+    /* panels match the landing page: thick ink border + a hard offset shadow */
+    .panel {
+      display: flex; flex-direction: column;
+      background: var(--panel); border-radius: 18px; padding: 14px 16px 16px;
+      min-width: 0; border: 2.5px solid var(--ink); box-shadow: 0 6px 0 var(--ink);
+    }
+    /* plain bold heading (no tag/pill), like the landing's section titles */
+    .panel-cap {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 900; letter-spacing: -.02em; color: var(--ink);
+      margin: 0 0 12px;
+    }
+    .panel-cap::before {
+      content: ''; width: 9px; height: 9px; border-radius: 50%;
+      background: var(--orange); flex-shrink: 0;
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* VIDEO — the scanner is an EYE: the feed lives in the iris,       */
+    /* halftone-printed, and the lids blink and squint while it looks.  */
+    /* ---------------------------------------------------------------- */
+    .eye {
+      position: relative; width: 100%; aspect-ratio: 10 / 7;
+      border-radius: 50% / 50%; overflow: hidden;
+      background: #F6F2E6; box-shadow: inset 0 0 0 2px rgba(23,23,27,.28);
+    }
+    .eye-ball {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      height: 80%; aspect-ratio: 1; border-radius: 50%; overflow: hidden;
+      background: #1b1a17;
+      animation: look 9s ease-in-out infinite;
+    }
+    .eye-ball video {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      filter: contrast(1.1) saturate(1.3) sepia(.1);
+    }
+    .eye-ball::after {   /* soft iris ring so it reads as an eye, not a hard disc */
+      content: ''; position: absolute; inset: 0; border-radius: 50%; z-index: 3;
+      box-shadow: inset 0 0 0 3px rgba(23,23,27,.28), inset 0 0 24px rgba(0,0,0,.3);
+      pointer-events: none;
+    }
+    .cam-halftone {   /* soft newspaper dither over the feed */
+      position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background-image: radial-gradient(rgba(12,10,8,.42) .8px, transparent 1.05px);
+      background-size: 3.4px 3.4px;
+      mix-blend-mode: multiply;
+    }
+    #camera-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; }
+    .eye-lid {
+      position: absolute; left: -6%; width: 112%; height: 58%; z-index: 4;
+      background: var(--panel); box-shadow: 0 0 0 2px rgba(23,23,27,.28);
+    }
+    .lid-top {
+      top: -4%; border-radius: 0 0 50% 50% / 0 0 100% 100%;
+      transform: translateY(-96%);
+      animation: blinktop 7s ease-in-out infinite;
+    }
+    .lid-bottom {
+      bottom: -4%; border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+      transform: translateY(96%);
+      animation: blinkbot 7s ease-in-out infinite;
+    }
+    /* the eyeball glances around like a real eye scanning the room */
+    @keyframes look {
+      0%, 100% { transform: translate(-50%, -50%); }
+      12%, 24% { transform: translate(-66%, -52%); }   /* glance left  */
+      38%, 50% { transform: translate(-34%, -47%); }   /* glance right */
+      64%      { transform: translate(-50%, -40%); }    /* glance up    */
+      82%      { transform: translate(-50%, -58%); }    /* glance down  */
+    }
+    /* mostly open; a lazy squint mid-cycle; one quick blink near the end */
+    @keyframes blinktop {
+      0%, 36%, 48%, 90%, 96%, 100% { transform: translateY(-96%); }
+      40%, 44% { transform: translateY(-58%); }
+      92%, 94% { transform: translateY(-10%); }
+    }
+    @keyframes blinkbot {
+      0%, 36%, 48%, 90%, 96%, 100% { transform: translateY(96%); }
+      40%, 44% { transform: translateY(62%); }
+      92%, 94% { transform: translateY(10%); }
+    }
+    @media (prefers-reduced-motion: reduce) { .eye-lid, .eye-ball { animation: none !important; } }
+    .vision-status {
+      margin-top: 10px; min-height: 14px; text-align: center;
+      font-size: 10px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--label);
+    }
+    .cam-pick-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; margin-top: 8px;
+    }
+    .cam-pick-lab { font-size: 9px; font-weight: 800; letter-spacing: .18em; color: var(--label); }
+    .cam-select {
+      max-width: 240px; font: 700 11px var(--font); color: var(--ink);
+      background: var(--cell); border: 1px solid var(--hair-soft); border-radius: 8px;
+      padding: 6px 8px; outline: none; cursor: pointer;
+    }
+    .cam-select:focus { border-color: var(--navy); }
+
+    /* ---------------------------------------------------------------- */
+    /* MIXER — bold level bars, each in a thick ink-outlined channel     */
+    /* ---------------------------------------------------------------- */
+    .mixer-plate {
+      position: relative; flex: 1; min-height: 260px;
+      border-radius: 14px; background: var(--cell); overflow: hidden;
+      border: 2.5px solid var(--ink);
+    }
+    .mix-ticks { display: none; }
+    .mix-zero {
+      position: absolute; top: 38%; left: 12px; right: 12px; height: 2px;
+      background: repeating-linear-gradient(90deg, rgba(23,23,26,.4) 0 6px, transparent 6px 12px);
+      pointer-events: none;
+    }
+    .mix-scope {
+      position: absolute; top: 38%; left: 20px; right: 20px;
+      width: calc(100% - 40px); height: 110px; transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .mix-area {
+      position: absolute; inset: 0; display: flex; align-items: flex-end;
+      justify-content: center; gap: 10px; padding: 20px 20px 0;
+    }
+    .mix-slot {
+      position: relative; width: 54px; max-width: 20%; height: 100%;
+      display: flex; flex-direction: column; justify-content: flex-end;
+      cursor: ns-resize; touch-action: none;
+      border-left: 2px solid var(--ink); border-right: 2px solid var(--ink);
+      background: repeating-linear-gradient(0deg, rgba(23,23,26,.05) 0 2px, transparent 2px 12px);
+    }
+    .mix-crayon {   /* bold level bar with a thick ink cap */
+      width: 100%; height: calc(var(--v, 50) * 1%);
+      background: var(--bar-color, var(--navy));
+      border-top: 3px solid var(--ink);
+      transition: height .08s linear;
+    }
+    .mix-crayon.hit { animation: crayonhit .16s ease-out; }
+    @keyframes crayonhit { from { filter: brightness(1.4); } }
+    .mix-strip {
+      height: 28px; flex-shrink: 0; border-top: 2px solid var(--ink);
+      background: var(--bar-color, var(--navy)); font-weight: 900;
+      display: flex; align-items: center; justify-content: center; color: #fff;
+    }
+    .mix-slot.muted .mix-crayon, .mix-slot.muted .mix-strip { background: #CFC9B8; }
+    .mix-slot.muted .mix-strip { color: var(--ink); }
+    .mix-mute-label {
+      position: absolute; left: 12px; bottom: 7px; font-size: 10px;
+      font-weight: 900; letter-spacing: .12em; text-transform: uppercase; z-index: 2;
+    }
+    .mix-empty-hint {
+      align-self: center; margin: auto; font-size: 10px; font-weight: 700;
+      letter-spacing: .16em; text-transform: uppercase; color: var(--label);
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* TEMPO — three bold, ink-bordered tiles you drag (our own design)  */
+    /* ---------------------------------------------------------------- */
+    .tempo-grid {
+      flex: 1; display: grid; gap: 10px; min-height: 280px;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1.5fr 1fr;
+    }
+    .tempo-chip {
+      position: relative; display: flex; flex-direction: column;
+      align-items: flex-start; justify-content: space-between;
+      padding: 14px 16px; border-radius: 16px; cursor: ns-resize; touch-action: none;
+      border: 2.5px solid var(--ink); overflow: hidden;
+      transition: transform .1s, filter .12s;
+    }
+    .tempo-chip:hover { filter: brightness(1.04); }
+    .tempo-chip:active { transform: translateY(1px); }
+    .tempo-chip .tc-cap {
+      font-size: 11px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase;
+    }
+    .tempo-chip .seg-row { align-self: center; }
+    .tempo-chip .rd { font-size: 1em; }
+    .tempo-chip .tc-hint {
+      font-size: 9px; font-weight: 700; letter-spacing: .12em; opacity: .55;
+      text-transform: uppercase;
+    }
+    /* BPM is the hero tile: big pulsing dot keeps the beat instead of a metronome */
+    .chip-bpm {
+      grid-area: 1 / 1 / 2 / 3; background: var(--cell);
+      flex-direction: row; align-items: center; justify-content: space-between;
+    }
+    .chip-bpm .tc-cap { color: var(--label); }
+    .chip-bpm .bpm-big { display: flex; align-items: baseline; gap: 8px; }
+    .chip-bpm .bpm-big .rd { font-size: 58px; line-height: .9; }
+    .chip-bpm .bpm-unit { font-size: 12px; font-weight: 800; letter-spacing: .12em; color: var(--label); }
+    .beat-dot {
+      width: 30px; height: 30px; border-radius: 50%; background: var(--ink);
+      transform: scale(.7); opacity: .5;
+    }
+    #tempo-panel.running .beat-dot {
+      animation: beatpulse var(--tick, .5s) ease-in-out infinite;
+    }
+    @keyframes beatpulse { 0%, 100% { transform: scale(.7); opacity: .45; } 25% { transform: scale(1); opacity: 1; } }
+    .chip-swing { grid-area: 2 / 1 / 3 / 2; background: var(--sky); }
+    .chip-key   { grid-area: 2 / 2 / 3 / 3; background: var(--orange); color: #fff; }
+    .chip-key .tc-hint { color: rgba(255,255,255,.7); }
+
+    /* ---------------------------------------------------------------- */
+    /* KEYPAD — the sample library, 4x4 hairline grid                   */
+    /* ---------------------------------------------------------------- */
+    .op-keypad {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+      background: var(--hair); border: 1px solid var(--hair);
+      border-radius: 12px; overflow: hidden;
+    }
+    .pad {
+      position: relative; aspect-ratio: 1; background: var(--cell);
+      display: flex; align-items: center; justify-content: center;
+      animation: padin .3s backwards; animation-delay: calc(var(--i, 0) * 14ms);
+      transition: background .12s;
+    }
+    @keyframes padin { from { opacity: 0; } }
+    .pad:hover { background: #E9E5D8; }
+    .pad.filler { cursor: default; }
+    .pad.locked { cursor: default; }
+    .pad.selected { box-shadow: inset 0 0 0 2.5px var(--type-color, var(--navy)); }
+    .pad.pop { animation: padpop .26s ease-out; }
+    @keyframes padpop { 35% { transform: scale(.88); } }
+    .pad-ico { line-height: 0; }
+    .pad-ico svg { width: 44%; height: auto; max-width: 46px; aspect-ratio: 1; }
+    .pad-num { position: absolute; right: 7px; bottom: 6px; opacity: .55; }
+    .pad-hatch {   /* undiscovered sound: the reference's striped circle */
+      width: 56%; aspect-ratio: 1; border-radius: 50%;
+      background: repeating-linear-gradient(45deg, #C6C1B0 0 3px, transparent 3px 6.5px);
+    }
+    .pad-new-dot {
+      position: absolute; top: 8px; left: 8px; width: 9px; height: 9px;
+      border-radius: 50%; background: var(--orange);
+    }
+    .pad-swap {   /* per-pad "swap the sample" corner button — always visible */
+      position: absolute; top: 5px; right: 5px; width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 9px; font-size: 17px; color: var(--ink);
+      background: var(--cell); border: 2px solid var(--ink);
+      opacity: .85; transition: opacity .12s, background .12s, transform .1s; cursor: pointer;
+    }
+    .pad:hover .pad-swap { opacity: 1; }
+    .pad-swap:hover { background: var(--orange); color: #fff; }
+    .pad-swap:active { transform: scale(.9); }
+    .pad-add-ico {
+      width: 40%; max-width: 40px; aspect-ratio: 1; border-radius: 50%;
+      border: 2px dashed #C6C1B0; color: #A39E90;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 300; line-height: 1;
+    }
+    .pad.pad-addable:hover .pad-add-ico { color: var(--navy); border-color: var(--navy); }
+    .keypad-foot {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 4px 0;
+    }
+    .kp-mode { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--navy); padding: 4px 0; }
+    .kp-mode:hover { text-decoration: underline; }
+    .kp-hint { font-size: 9px; font-weight: 700; letter-spacing: .16em; color: var(--label); }
+
+    /* ---------------------------------------------------------------- */
+    /* SOUND — waveform + ADSR + tune for the selected pad              */
+    /* ---------------------------------------------------------------- */
+    .lib-editor { flex: 1; display: flex; gap: 16px; min-height: 200px; }
+    .ed-empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      border-radius: 12px; text-align: center; padding: 20px;
+      font-size: 10px; font-weight: 700; letter-spacing: .18em; color: var(--label);
+      background: repeating-linear-gradient(45deg, rgba(23,23,27,.04) 0 4px, transparent 4px 9px);
+    }
+    .ed-main { flex: 1.7; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .ed-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .ed-ico { line-height: 0; flex-shrink: 0; }
+    .ed-ico svg { width: 22px; height: 22px; }
+    .ed-name {
+      font-size: 14px; font-weight: 800; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .ed-meta { font-size: 10px; font-weight: 800; letter-spacing: .04em; flex-shrink: 0; }
+    .ed-spacer { flex: 1; }
+    .ed-play {
+      flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+      background: var(--ink); color: var(--paper);
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* Adding a sound to the sequencer is a headline action — big, obvious. */
+    .ed-add {
+      width: 100%; height: 44px; margin-top: 2px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--orange); color: #fff; border: 2.5px solid var(--ink);
+      font-size: 14px; font-weight: 900; letter-spacing: .02em;
+      box-shadow: 0 3px 0 rgba(23,23,26,.4); transition: transform .1s, filter .12s;
+    }
+    .ed-add:hover { filter: brightness(1.05); }
+    .ed-add:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(23,23,26,.4); }
+    .ed-play:hover { filter: brightness(1.1); }
+    .ed-wave {
+      flex: 1; width: 100%; min-height: 110px; border-radius: 10px;
+      background: var(--cell); border: 1px solid var(--hair-soft); cursor: pointer;
+    }
+    .ed-side { flex: 1; max-width: 250px; display: flex; flex-direction: column; gap: 8px; }
+    .ed-faders { flex: 1; display: flex; gap: 10px; padding: 6px 8px 0; min-height: 96px; }
+    .vfader { position: relative; flex: 1; cursor: ns-resize; touch-action: none; }
+    .vtrack {
+      position: absolute; left: 50%; top: 4px; bottom: 4px; width: 3px;
+      transform: translateX(-50%); background: rgba(23,23,27,.3); border-radius: 2px;
+    }
+    .vhandle {
+      position: absolute; left: 50%; top: var(--p, 50%);
+      transform: translate(-50%, -50%);
+      width: 26px; height: 14px; border-radius: 4px; background: var(--navy);
+    }
+    .vhandle::after {   /* fader cap line */
+      content: ''; position: absolute; left: 4px; right: 4px; top: 50%;
+      height: 2px; margin-top: -1px; background: rgba(241,238,229,.85); border-radius: 1px;
+    }
+    .ed-fletters { display: flex; padding: 0 8px; }
+    .ed-fletters span {
+      flex: 1; text-align: center; font-size: 10px; font-weight: 800;
+      letter-spacing: .1em; color: var(--label);
+    }
+    .ed-tune { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+    .mc-sym { font-size: 15px; line-height: 1; }
+    .hslider { position: relative; flex: 1; height: 24px; cursor: ew-resize; touch-action: none; }
+    .hslider::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px;
+      margin-top: -1.5px; background: rgba(23,23,27,.3); border-radius: 2px;
+    }
+    .hknob {
+      position: absolute; top: 50%; left: var(--p, 50%);
+      transform: translate(-50%, -50%);
+      width: 14px; height: 24px; border-radius: 4px; background: var(--navy);
+    }
+    .ed-tune-val {
+      min-width: 44px; text-align: right; font-size: 11px; font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    @media (max-width: 640px) {
+      .lib-editor { flex-direction: column; }
+      .ed-side { max-width: none; }
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* SEQUENCER — 16 steps per track + pitch lane                      */
+    /* ---------------------------------------------------------------- */
+    .seq-scroll { overflow-x: auto; padding-bottom: 4px; }
+    .seq-ruler { display: flex; margin-bottom: 8px; min-width: max-content; }
+    .ruler-spacer {
+      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
+      background: var(--panel); z-index: 2;
+    }
+    .ruler-steps { display: flex; gap: var(--step-gap); }
+    .ruler-steps span {
+      width: var(--step); text-align: center; font-size: 9px;
+      font-weight: 700; color: var(--label);
+    }
+    .ruler-steps span:nth-child(4n+1):not(:first-child) { margin-left: 9px; }
+
+    .track-block {
+      padding: 8px 0 6px; border-bottom: 1px solid rgba(23,23,27,.08);
+      min-width: max-content;
+    }
+    .track-block:last-child { border-bottom: 0; }
+    .track-row { display: flex; align-items: center; }
+    .track-label {
+      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
+      background: var(--panel); z-index: 2;
+      display: flex; align-items: center; gap: 8px; padding-right: 10px;
+      font-size: 12px; font-weight: 700;
+    }
+    .tl-ico { line-height: 0; flex-shrink: 0; }
+    .tl-ico svg { width: 18px; height: 18px; }
+    .tl-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .track-steps { display: flex; gap: var(--step-gap); }
+    .step {
+      position: relative; width: var(--step); height: var(--step);
+      background: var(--cell); border: 1px solid var(--hair-soft); border-radius: 7px;
+      transition: border-color .1s;
+    }
+    .step.beat-start:not(:first-child) { margin-left: 9px; }
+    .step:hover { border-color: var(--ink); }
+    .step .shape {
+      position: absolute; inset: 5px;
+      clip-path: var(--shape, circle(50% at 50% 50%));
+      background: transparent; transition: background .08s;
+    }
+    .step.on .shape { background: var(--type-color, var(--navy)); }
+    .step .ring { position: absolute; inset: 0; border-radius: 6px; pointer-events: none; }
+    .step.playhead .ring { box-shadow: inset 0 0 0 2px var(--ink); }
+    .step-pitch {
+      position: absolute; top: 0; right: 2px; font-size: 8px; font-weight: 800;
+      color: var(--ink); opacity: 0; pointer-events: none;
+    }
+    .step.tuned .step-pitch { opacity: .85; }
+
+    .track-mute {
+      margin-left: 12px; height: 26px; padding: 0 10px; border-radius: 7px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .track-mute.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .track-remove {
+      margin-left: 6px; width: 26px; height: 26px; border-radius: 7px;
+      color: var(--label); font-size: 13px; transition: color .12s;
+    }
+    .track-remove:hover { color: var(--red); }
+
+    .pitch-lane { display: flex; align-items: center; margin-top: 5px; }
+    .pitch-lane-label {
+      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
+      background: var(--panel); z-index: 2;
+      font-size: 9px; font-weight: 700; letter-spacing: .16em;
+      text-transform: uppercase; color: var(--label);
+    }
+    .pitch-cells { display: flex; gap: var(--step-gap); }
+    .pitch-cell {
+      width: var(--step); height: 16px; border-radius: 4px;
+      background: rgba(23,23,27,.06); cursor: ns-resize; touch-action: none;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 800; color: transparent;
+    }
+    .pitch-cell.beat-start:not(:first-child) { margin-left: 9px; }
+    .pitch-cell:hover { background: rgba(23,23,27,.12); }
+    .pitch-cell.nz { background: var(--cell); border: 1px solid var(--hair-soft); color: var(--ink); }
+
+    .empty {
+      padding: 26px 8px; text-align: center;
+      font-size: 11px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--label);
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* XY — morph pad: five effect zones, ink-outlined, with a knob puck */
+    /* ---------------------------------------------------------------- */
+    .xy-pad {
+      position: relative; flex: 1; min-height: 260px;
+      border-radius: 14px; overflow: hidden; touch-action: none; cursor: crosshair;
+      border: 2.5px solid var(--ink);
+    }
+    .xy-block { position: absolute; box-shadow: inset 0 0 0 1.5px rgba(23,23,26,.85); }
+    .xy-orange { left: 0;   top: 0;   width: 47%; height: 45%; background: var(--orange); }  /* DRIVE  */
+    .xy-blue   { left: 47%; top: 0;   width: 53%; height: 37%; background: var(--indigo); }  /* FILTER */
+    .xy-brick  { left: 47%; top: 37%; width: 32%; height: 8%;  background: var(--gold); }    /* CRUSH  */
+    .xy-pink   { left: 79%; top: 37%; width: 21%; height: 63%; background: var(--violet); }  /* VERB   */
+    .xy-green  { left: 0;   top: 45%; width: 79%; height: 55%; background: var(--lime); }     /* ECHO   */
+    .xy-lab {
+      position: absolute; left: 9px; top: 7px; font-size: 10px; font-weight: 900;
+      letter-spacing: .1em; color: var(--ink); pointer-events: none;
+    }
+    .xy-cursor {   /* a physical-looking knob puck */
+      position: absolute; left: 50%; top: 50%; width: 40px; height: 40px;
+      transform: translate(-50%, -50%); transition: opacity .2s;
+      border-radius: 50%; background: var(--cell);
+      border: 3px solid var(--ink); box-shadow: 0 3px 0 rgba(23,23,26,.35);
+      pointer-events: none;
+    }
+    .xy-cursor::after {
+      content: ''; position: absolute; left: 50%; top: 4px; width: 3px; height: 10px;
+      margin-left: -1.5px; border-radius: 2px; background: var(--ink);
+    }
+    .xy-cursor.off { opacity: .4; }
+
+    /* ---------------------------------------------------------------- */
+    /* TR BAR — track selector footer                                   */
+    /* ---------------------------------------------------------------- */
+    .trbar {
+      position: sticky; bottom: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 10px 16px calc(10px + var(--safe-b));
+      background: var(--frame); box-shadow: inset 0 1px 0 rgba(20,20,20,.14);
+    }
+    .bb-label { font-size: 19px; font-weight: 300; letter-spacing: .1em; color: var(--tr-idle); }
+    .bb-tracks {
+      display: flex; gap: 8px; flex: 1; max-width: 720px;
+      overflow-x: auto; padding: 2px;
+    }
+    .bb-tracks::-webkit-scrollbar { display: none; }
+    /* margin-auto pair centres the row until it overflows, then it scrolls */
+    .tr-btn:first-child { margin-left: auto; }
+    .tr-btn.fx { margin-right: auto; }
+    .tr-btn {
+      flex: 0 0 52px; height: 42px; border-radius: 8px; background: var(--tr-idle);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, filter .12s;
+    }
+    .tr-btn:hover { filter: brightness(1.06); }
+    .tr-btn.active { background: var(--navy); }
+    .tr-btn.vacant { opacity: .4; }
+    .tr-btn.has-color { box-shadow: inset 0 -4px 0 var(--tc, transparent); }
+    .tr-btn.fx { background: var(--fx-pink); font-size: 17px; font-weight: 300; letter-spacing: .2em; padding-left: .2em; }
+    .tr-btn.fx.active { background: var(--magenta); }
+
+    /* ---------------------------------------------------------------- */
+    /* POPOVERS — jam session, guide, player profile                    */
+    /* ---------------------------------------------------------------- */
+    .jam-panel, .guide-panel, .profile-panel {
+      display: none; position: fixed; z-index: 60;
+      left: 0; right: 0; bottom: 0;
+      background: var(--paper); border: 1px solid var(--hair-soft);
+      border-radius: 18px 18px 0 0;
+      padding: 18px 20px calc(22px + var(--safe-b));
+      box-shadow: 0 -14px 44px rgba(23,23,27,.16);
+      max-height: 80vh; overflow-y: auto;
+    }
+    .jam-panel.open, .guide-panel.open, .profile-panel.open { display: block; }
+    @media (min-width: 700px) {
+      .jam-panel, .guide-panel, .profile-panel {
+        left: auto; bottom: auto; top: 72px; right: 18px; width: 350px;
+        border-radius: 16px; padding: 18px 20px 20px;
+        box-shadow: 0 18px 50px rgba(23,23,27,.18);
+      }
+    }
+
+    /* profile panel */
+    .pp-head {
+      font-size: 10px; font-weight: 800; letter-spacing: .22em;
+      color: var(--label); margin-bottom: 12px;
+    }
+    .pp-sub { font-size: 12px; line-height: 1.5; color: #6E6A5E; margin: 0 0 12px; }
+    .pp-field { display: block; width: 100%; margin-bottom: 8px; user-select: text; }
+    .pp-row { display: flex; gap: 6px; margin-top: 4px; }
+    .pp-row .pp-namefield { flex: 1; margin: 0; }
+    .pp-error { min-height: 15px; margin: 2px 0 6px; font-size: 11px; font-weight: 700; color: var(--red); }
+    .pp-divider {
+      display: flex; align-items: center; gap: 10px; margin: 14px 0;
+      font-size: 9px; font-weight: 800; letter-spacing: .2em; color: var(--label);
+    }
+    .pp-divider::before, .pp-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--hair-soft);
+    }
+    .pp-userline { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .pp-ava {
+      flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%;
+      background: var(--navy); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; font-weight: 900; text-transform: uppercase;
+    }
+    .pp-idcol { min-width: 0; }
+    .pp-danger { margin-top: 6px; color: var(--red); }
+    .pp-danger.confirm { background: var(--red); border-color: var(--red); color: #fff; }
+    .pp-name { font-size: 15px; font-weight: 800; }
+    .pp-mail {
+      font-size: 11px; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #pp-logout { margin-top: 8px; }
+
+    .tb-coll { background: var(--cell); border: 1px solid var(--hair-soft); }
+
+    /* ---------------------------------------------------------------- */
+    /* COLLECTION — the pokedex of sounds                               */
+    /* ---------------------------------------------------------------- */
+    .col-panel {
+      width: min(780px, calc(100vw - 28px)); max-height: 85vh; overflow-y: auto;
+      background: var(--paper); border-radius: 18px; padding: 18px 20px 20px;
+      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
+    }
+    .col-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .col-head h2 {
+      margin: 0; font-size: 10px; font-weight: 800;
+      letter-spacing: .22em; color: var(--label);
+    }
+    .col-count { display: inline-flex; align-items: baseline; gap: 5px; color: var(--navy); }
+    .col-count .col-of { font-size: 11px; font-weight: 800; color: var(--label); }
+    .col-close {
+      margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
+      background: var(--cell); border: 1px solid var(--hair-soft); font-size: 13px;
+    }
+    .col-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .col-chip {
+      display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+      border-radius: 8px; background: var(--cell); border: 1px solid var(--hair-soft);
+      font-size: 11px; font-weight: 800;
+    }
+    .col-chip .ico { line-height: 0; }
+    .col-chip .ico svg { width: 13px; height: 13px; }
+    .col-chip .cnt { opacity: .55; font-weight: 700; }
+    .col-chip.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .col-chip.active .ico { color: #fff !important; }
+    .collection-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .col-item {
+      display: flex; flex-direction: column; align-items: center; gap: 7px;
+      background: var(--panel); border-radius: 12px; padding: 16px 10px 12px;
+      text-align: center; position: relative; transition: filter .12s;
+    }
+    .col-item:not(.locked):hover { filter: brightness(1.04); }
+    .col-item.locked { cursor: default; }
+    .col-item .ci-ico { line-height: 0; height: 40px; display: flex; align-items: center; }
+    .col-item .ci-ico svg { width: 38px; height: 38px; }
+    .ci-hatch {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: repeating-linear-gradient(45deg, #C6C1B0 0 3px, transparent 3px 6.5px);
+    }
+    .ci-name {
+      font-size: 12px; font-weight: 800; max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .col-item.locked .ci-name { color: var(--label); letter-spacing: .2em; }
+    .ci-kind {
+      font-size: 9px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--label);
+    }
+    .ci-rar { font-size: 10px; font-weight: 800; }
+    .ci-new {
+      position: absolute; top: 8px; right: 8px; width: 9px; height: 9px;
+      border-radius: 50%; background: var(--orange);
+    }
+    .col-item.pop { animation: padpop .26s ease-out; }
+
+    /* sample picker */
+    .picker-panel {
+      width: min(560px, calc(100vw - 28px)); max-height: 80vh; overflow-y: auto;
+      background: var(--paper); border-radius: 18px; padding: 18px 20px 20px;
+      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
+    }
+    .picker-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+      gap: 8px; margin-bottom: 4px;
+    }
+    .picker-item {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      background: var(--panel); border-radius: 10px; padding: 12px 8px 10px;
+      transition: filter .12s;
+    }
+    .picker-item:hover { filter: brightness(1.05); }
+    .picker-item.current { box-shadow: inset 0 0 0 2px var(--navy); }
+    .picker-item .pi-ico { line-height: 0; }
+    .picker-item .pi-ico svg { width: 26px; height: 26px; }
+    .picker-item .pi-name {
+      font-size: 10px; font-weight: 700; max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .picker-empty {
+      padding: 22px 10px; text-align: center; font-size: 10px; font-weight: 700;
+      letter-spacing: .16em; text-transform: uppercase; color: var(--label);
+    }
+    #picker-remove { margin-top: 10px; }
+
+    /* sequencer: focused track (TR buttons) + who added it              */
+    .track-block.tr-focus { box-shadow: inset 3px 0 0 var(--navy); }
+    .tl-txt { display: flex; flex-direction: column; min-width: 0; }
+    .tl-by {
+      font-size: 8px; font-weight: 800; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--label);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .panel.flash { animation: panelflash .8s ease-out; }
+    @keyframes panelflash { from { box-shadow: 0 0 0 3px var(--magenta); } }
+
+    .hw {
+      font-size: 13px; font-weight: 700; color: var(--ink);
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      border-radius: 10px; padding: 9px 14px;
+      transition: background .12s, filter .12s;
+    }
+    .hw:hover { background: #E7E2D2; }
+    .hw.primary { background: var(--green); border-color: var(--green); color: #fff; }
+    .hw.primary:hover { background: var(--green); filter: brightness(1.1); }
+    .hw:disabled { opacity: .45; cursor: default; }
+
+    .jam-head {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+      font-size: 13px; font-weight: 800; letter-spacing: .04em;
+    }
+    .jam-peers { margin-left: auto; font-size: 11px; font-weight: 800; color: var(--green); }
+    .jam-status { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #6E6A5E; }
+    .jam-wide { width: 100%; }
+    .jam-join-row { display: flex; gap: 6px; margin: 8px 0 10px; }
+    .jam-input {
+      flex: 1; min-width: 0; background: var(--cell); border: 1px solid var(--hair-soft);
+      border-radius: 10px; color: var(--ink); font: 500 13px var(--font);
+      padding: 9px 12px; outline: none;
+    }
+    .jam-input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(39,45,94,.14); }
+    .jam-ips { font-size: 11px; color: #6E6A5E; line-height: 1.5; margin-bottom: 6px; word-break: break-all; }
+    .jam-out-head {
+      font-size: 9px; font-weight: 800; letter-spacing: .16em; color: var(--label);
+      text-transform: uppercase; margin: 10px 0 6px;
+    }
+    .jam-outputs { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+    .jam-output-btn {
+      display: flex; align-items: center; gap: 8px; text-align: left;
+      font-size: 13px; font-weight: 600;
+      background: var(--cell); border: 1px solid var(--hair-soft); border-radius: 10px;
+      padding: 9px 12px; transition: background .12s;
+    }
+    .jam-output-btn:hover { background: #E7E2D2; }
+    .jam-output-btn.active { color: #fff; background: var(--green); border-color: var(--green); }
+    .jam-output-btn .spk { font-size: 13px; flex-shrink: 0; }
+    .jam-output-btn .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .jam-output-btn .who { margin-left: auto; flex-shrink: 0; font-size: 9px; opacity: .65; font-weight: 800; }
+    .jam-silent { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--mustard); line-height: 1.4; }
+
+    .guide-app-info {
+      text-align: center; margin-bottom: 16px; padding-bottom: 14px;
+      border-bottom: 1px solid var(--hair-soft);
+    }
+    .guide-app-name { font-size: 20px; font-weight: 900; letter-spacing: -.01em; }
+    .guide-app-desc { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--label); text-transform: uppercase; margin-top: 3px; }
+    .guide-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+    .guide-row:last-child { margin-bottom: 2px; }
+    .guide-num {
+      flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800;
+    }
+    .guide-num.fx { background: var(--orange); border-color: var(--orange); color: #fff; font-size: 10px; }
+    .guide-row h4 { margin: 0 0 3px; font-size: 13px; font-weight: 800; }
+    .guide-row p { margin: 0; font-size: 13px; line-height: 1.5; color: #6E6A5E; }
+    .guide-credits {
+      margin-top: 16px; padding-top: 14px; text-align: center;
+      border-top: 1px solid var(--hair-soft);
+    }
+    .gc-head { font-size: 9px; font-weight: 800; letter-spacing: .22em; color: var(--label); margin-bottom: 6px; }
+    .gc-names { margin: 0 0 6px; font-size: 13px; font-weight: 800; }
+    .gc-sub { margin: 0; font-size: 11px; line-height: 1.5; color: #6E6A5E; }
+
+    /* ---------------------------------------------------------------- */
+    /* REVEAL MODAL — new sound unlocked                                */
+    /* ---------------------------------------------------------------- */
+    .modal {
+      display: none; position: fixed; inset: 0; z-index: 70;
+      background: rgba(23,20,14,.35); backdrop-filter: blur(5px);
+      align-items: center; justify-content: center;
+    }
+    .modal.active { display: flex; }
+    .modal-card {
+      position: relative; width: 300px; padding: 26px 30px;
+      background: var(--paper); border-radius: 18px; text-align: center;
+      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
+    }
+    @keyframes pop { from { transform: scale(.9); opacity: 0; } }
+    .modal-card h2 {
+      margin: 0 0 16px; font-size: 10px; font-weight: 800;
+      letter-spacing: .22em; text-transform: uppercase; color: var(--label);
+    }
+    .reveal-ico { height: 72px; margin: 0 auto 14px; line-height: 0; }
+    .reveal-ico svg {
+      width: 72px; height: 72px;
+      animation: revpop .55s cubic-bezier(.3,1.7,.5,1) backwards .08s;
+    }
+    @keyframes revpop { from { transform: scale(0) rotate(-14deg); } }
+    .modal-card .name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+    .modal-card .kind { font-size: 11px; font-weight: 700; color: var(--label); margin-bottom: 20px; }
+    #reveal-close { background: var(--orange); border-color: var(--orange); color: #fff; }
+    .confetti { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+    .cf {
+      position: absolute; left: 50%; top: 36%; width: 10px; height: 10px;
+      background: var(--c, var(--navy)); opacity: 0;
+      animation: cfburst .95s cubic-bezier(.15,.6,.4,1) forwards;
+      animation-delay: var(--d, 0s);
+    }
+    .cf.round { border-radius: 50%; }
+    .cf.tri { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+    @keyframes cfburst {
+      0%   { transform: translate(-50%,-50%) scale(.3) rotate(0deg); opacity: 1; }
+      70%  { opacity: 1; }
+      100% { transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, -60px)))
+                        scale(1) rotate(var(--r, 180deg)); opacity: 0; }
+    }
+
+    .side-scope-card { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #metro-needle, .cf, .tb-rec.recording, .pad { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= TOP BAR ================= -->
+  <header class="topbar">
+    <a class="app-logo" href="index.html" title="Back to the site">
+      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
+        <path d="M120 256C120 256 180 160 256 160C332 160 392 256 392 256C392 256 332 352 256 352C180 352 120 256 120 256Z" fill="none" stroke="#17171A" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="256" cy="256" r="62" fill="#E67E22"/>
+        <circle cx="256" cy="256" r="23" fill="#17171A"/>
+        <rect x="78" y="248" width="40" height="16" rx="8" fill="#17171A"/>
+        <rect x="394" y="248" width="40" height="16" rx="8" fill="#17171A"/>
+      </svg>
+      <span class="app-word">snap it<span class="pd">.</span></span>
+    </a>
+
+    <div class="transport">
+      <button id="export-button" class="tb tb-rec" title="Record loop to file">
+        <span class="rec-dot"></span>
+      </button>
+      <button id="play-button" class="tb tb-play" title="Play">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 4l14 8-14 8z"/></svg>
+      </button>
+      <button id="stop-button" class="tb tb-stop" title="Stop">
+        <svg viewBox="0 0 24 24" width="18" height="18"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>
+      </button>
+      <button id="clear-button" class="tb-clear" title="Clear all steps">CLR</button>
+    </div>
+
+    <button id="bpm-chip" class="bpm-chip" title="Drag up/down to change BPM">
+      <span class="bc-cap">BPM</span>
+      <span id="bpm-value" class="seg-row">120</span>
+    </button>
+
+    <!-- hidden tempo button kept for JS compatibility -->
+    <button id="tempo-button" hidden></button>
+
+    <div class="top-right">
+      <button id="collection-button" class="tb tb-coll" title="Your collection">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#17171B"
+             stroke-width="2" stroke-linejoin="round">
+          <rect x="8" y="3.5" width="12.5" height="15.5" rx="2"/>
+          <path d="M4 7.5v11a2 2 0 002 2h10.5"/>
+        </svg>
+      </button>
+      <button id="jam-button" class="tb tb-jam" title="Jam session">
+        <span id="jam-dot" class="jam-dot"></span>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff"
+             stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M3.5 13.5v-4h4v4zM10 9.5h3a1.5 1.5 0 011.5 1.5v3.5"/>
+          <path d="M14.5 14.5l-2-2.6M14.5 14.5l2.5-2.6"/>
+        </svg>
+      </button>
+      <button id="guide-button" class="tb tb-guide" title="Guide">GUIDE</button>
+      <button id="menu-button" class="tb tb-gear" title="Settings">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="#17171B">
+          <circle cx="12" cy="12" r="3.4"/>
+          <g>
+            <rect x="10.9" y="3.4" width="2.2" height="5"/>
+            <rect x="10.9" y="15.6" width="2.2" height="5"/>
+            <rect x="3.4" y="10.9" width="5" height="2.2"/>
+            <rect x="15.6" y="10.9" width="5" height="2.2"/>
+            <rect x="10.9" y="3.4" width="2.2" height="5" transform="rotate(45 12 12)"/>
+            <rect x="10.9" y="15.6" width="2.2" height="5" transform="rotate(45 12 12)"/>
+            <rect x="3.4" y="10.9" width="5" height="2.2" transform="rotate(45 12 12)"/>
+            <rect x="15.6" y="10.9" width="5" height="2.2" transform="rotate(45 12 12)"/>
+          </g>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= PANEL DECK ================= -->
+  <main class="deck">
+
+    <!-- VIDEO: the object scanner — an eye that watches the world -->
+    <section class="panel p-video" id="card-video">
+      <h2 class="panel-cap">The Scanner</h2>
+      <div class="eye" id="camera-eye">
+        <div class="eye-ball">
+          <video id="camera-video" autoplay muted playsinline></video>
+          <div class="cam-halftone"></div>
+          <canvas id="camera-canvas"></canvas>
+        </div>
+        <div class="eye-lid lid-top"></div>
+        <div class="eye-lid lid-bottom"></div>
+      </div>
+      <p id="vision-status" class="vision-status">Starting camera…</p>
+      <div class="cam-pick-row">
+        <label class="cam-pick-lab" for="camera-select">CAM</label>
+        <select id="camera-select" class="cam-select">
+          <option>Default camera</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- MIXER: crayon bars, one per sequencer track -->
+    <section class="panel p-mixer" id="card-mixer">
+      <h2 class="panel-cap">The Mix</h2>
+      <div class="mixer-plate">
+        <div class="mix-ticks left"></div>
+        <div class="mix-ticks right"></div>
+        <div class="mix-zero"></div>
+        <canvas id="scope-canvas" class="mix-scope" width="620" height="110"></canvas>
+        <div id="mixer-area" class="mix-area"></div>
+      </div>
+    </section>
+
+    <!-- TEMPO: three drag tiles — BPM (with a beat-pulse), SWING, KEY -->
+    <section class="panel p-tempo" id="card-tempo">
+      <h2 class="panel-cap">Tempo &amp; Key</h2>
+      <div id="tempo-panel" class="tempo-grid">
+        <button class="tempo-chip chip-bpm" id="chip-bpm" title="Drag up/down to change BPM">
+          <span class="tc-cap">BPM</span>
+          <span class="bpm-big"><span id="bpm-value-big" class="seg-row">120</span></span>
+          <span class="beat-dot"></span>
+        </button>
+        <button class="tempo-chip chip-swing" id="chip-swing" title="Drag up/down to change swing">
+          <span class="tc-cap">SWING</span>
+          <span id="swing-value" class="seg-row">0</span>
+          <span class="tc-hint">drag ↕</span>
+        </button>
+        <button class="tempo-chip chip-key" id="chip-key" title="Drag up/down to transpose">
+          <span class="tc-cap">KEY</span>
+          <span id="key-value" class="seg-row">C</span>
+          <span class="tc-hint">drag ↕</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- KEYPAD: the sample library -->
+    <section class="panel p-keypad" id="card-keypad">
+      <h2 class="panel-cap">Your Kit</h2>
+      <div id="library-grid" class="op-keypad"></div>
+      <div class="keypad-foot">
+        <button class="kp-mode" id="kp-mode" title="View your collection">&#10697; COLLECTION</button>
+        <span class="kp-hint">SCAN OBJECTS TO UNLOCK</span>
+      </div>
+    </section>
+
+    <!-- SOUND: waveform + ADSR + tune for the selected pad -->
+    <section class="panel p-sound" id="card-sound">
+      <h2 class="panel-cap">Shape the Sound</h2>
+      <div id="lib-editor" class="lib-editor">
+        <div class="ed-empty">TAP A PAD TO SHAPE ITS SOUND</div>
+      </div>
+    </section>
+
+    <!-- SEQUENCER: 16 steps per track -->
+    <section class="panel p-seq" id="card-seq">
+      <h2 class="panel-cap">The Sequencer</h2>
+      <div class="seq-scroll">
+        <div class="seq-ruler">
+          <div class="ruler-spacer"></div>
+          <div class="ruler-steps">
+            <span>1</span><span>2</span><span>3</span><span>4</span>
+            <span>5</span><span>6</span><span>7</span><span>8</span>
+            <span>9</span><span>10</span><span>11</span><span>12</span>
+            <span>13</span><span>14</span><span>15</span><span>16</span>
+          </div>
+        </div>
+        <div id="sequencer-tracks"></div>
+      </div>
+    </section>
+
+    <!-- XY: textured color field -->
+    <section class="panel p-xy" id="card-xy">
+      <h2 class="panel-cap">FX Pad</h2>
+      <div class="xy-pad" id="xy-pad"
+           title="Drag to morph between effects — each zone is one effect. Double-click to bypass.">
+        <div class="xy-block xy-orange"><span class="xy-lab">DRIVE</span></div>
+        <div class="xy-block xy-blue"><span class="xy-lab">FILTER</span></div>
+        <div class="xy-block xy-brick"><span class="xy-lab">CRUSH</span></div>
+        <div class="xy-block xy-pink"><span class="xy-lab">VERB</span></div>
+        <div class="xy-block xy-green"><span class="xy-lab">ECHO</span></div>
+        <div class="xy-cursor off"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= TR BAR ================= -->
+  <footer class="trbar">
+    <span class="bb-label">TR</span>
+    <!-- one button per sequencer track, rendered by ui.js -->
+    <div class="bb-tracks" id="track-selectors"></div>
+  </footer>
+
+  <!-- Jam session popover -->
+  <div id="jam-panel" class="jam-panel">
+    <div class="jam-head">JAM SESSION <span id="jam-peers" class="jam-peers"></span></div>
+    <p id="jam-status" class="jam-status">Offline — host a session, or join a friend's.</p>
+    <button id="jam-host" class="hw primary jam-wide">Host on this WiFi</button>
+    <div class="jam-join-row">
+      <input id="jam-address" class="jam-input" placeholder="Host IP, e.g. 192.168.1.23" spellcheck="false" />
+      <button id="jam-join" class="hw">Join</button>
+    </div>
+    <div id="jam-ips" class="jam-ips"></div>
+    <div id="jam-output-sec" style="display:none;">
+      <div class="jam-out-head">Audio output</div>
+      <div id="jam-outputs" class="jam-outputs"></div>
+      <p id="jam-silent-note" class="jam-silent"></p>
+    </div>
+    <button id="jam-leave" class="hw jam-wide" style="display:none;">Leave session</button>
+  </div>
+
+  <!-- Guide popover -->
+  <div id="guide-panel" class="guide-panel">
+    <div class="guide-app-info">
+      <div class="guide-app-name">SNAP IT</div>
+      <div class="guide-app-desc">scan the world &middot; make it a beat</div>
+    </div>
+    <div class="guide-row">
+      <div class="guide-num" data-seg="1"></div>
+      <div><h4>Scan</h4><p>Point the camera at everyday objects — a cup, a book, a bottle. Each one unlocks a drum sound on the keypad.</p></div>
+    </div>
+    <div class="guide-row">
+      <div class="guide-num" data-seg="2"></div>
+      <div><h4>Play</h4><p>Tap keypad pads to hear your sounds. Hatched pads are still hiding out in the real world.</p></div>
+    </div>
+    <div class="guide-row">
+      <div class="guide-num" data-seg="3"></div>
+      <div><h4>Sequence</h4><p>Hit + SEQ on a sound, then toggle its 16 steps. Drag the pitch lane up or down to tune single steps.</p></div>
+    </div>
+    <div class="guide-row">
+      <div class="guide-num" data-seg="4"></div>
+      <div><h4>Shape</h4><p>Ride the mixer crayons for level, pull the ADSR faders, and drag the BPM, SWING and KEY chips for the groove.</p></div>
+    </div>
+    <div class="guide-row">
+      <div class="guide-num fx">FX</div>
+      <div><h4>Jam</h4><p>Host or join a WiFi session and build the beat together — one machine plays the sound for the whole room.</p></div>
+    </div>
+    <div class="guide-credits">
+      <div class="gc-head">MADE BY</div>
+      <p class="gc-names">Arnas Bucys &middot; Theodor Petrea &middot; Charles Morcello</p>
+      <p class="gc-sub">Snap It turns the world around you into a drum machine —
+        scan objects, collect their sounds, sequence them, and jam with friends.</p>
+    </div>
+  </div>
+
+  <!-- Player profile popover (login / account) -->
+  <div id="profile-panel" class="profile-panel">
+    <div class="pp-head">PLAYER</div>
+
+    <div id="profile-auth">
+      <p class="pp-sub">Just jamming? Pick a player name — no password needed. It shows on everyone's screen in a session.</p>
+      <div class="pp-row">
+        <input id="pp-guestname" class="jam-input pp-field pp-namefield" placeholder="player name" maxlength="24" />
+        <button id="pp-saveguest" class="hw">Use</button>
+      </div>
+      <div class="pp-divider">OR</div>
+      <p class="pp-sub">Log in to keep your collection tied to you on this device, and carry your name everywhere.</p>
+      <input id="pp-email" class="jam-input pp-field" type="email" placeholder="email" spellcheck="false" autocomplete="email" />
+      <input id="pp-pass" class="jam-input pp-field" type="password" placeholder="password (6+ characters)" autocomplete="current-password" />
+      <p id="pp-error" class="pp-error"></p>
+      <div class="pp-row">
+        <button id="pp-login" class="hw primary" style="flex:1;">Log in</button>
+        <button id="pp-signup" class="hw" style="flex:1;">Create account</button>
+      </div>
+    </div>
+
+    <div id="profile-user" style="display:none;">
+      <div class="pp-userline">
+        <span id="pp-ava" class="pp-ava">P</span>
+        <div class="pp-idcol">
+          <div id="pp-name" class="pp-name">Player</div>
+          <div id="pp-mail" class="pp-mail"></div>
+        </div>
+      </div>
+      <div class="pp-row">
+        <input id="pp-newname" class="jam-input pp-field pp-namefield" placeholder="display name" maxlength="24" />
+        <button id="pp-savename" class="hw">Save</button>
+      </div>
+      <p id="pp-error2" class="pp-error"></p>
+      <button id="pp-logout" class="hw jam-wide">Log out</button>
+      <button id="pp-delete" class="hw jam-wide pp-danger">Delete account</button>
+    </div>
+  </div>
+
+  <!-- Collection modal — every sound, found and still hiding -->
+  <div id="collection-modal" class="modal">
+    <div class="col-panel">
+      <div class="col-head">
+        <h2>COLLECTION</h2>
+        <span id="col-count" class="col-count"></span>
+        <button id="col-close" class="col-close" title="Close">&#10005;</button>
+      </div>
+      <div id="col-chips" class="col-chips"></div>
+      <div id="collection-grid" class="collection-grid"></div>
+    </div>
+  </div>
+
+  <!-- Sample picker — assign / swap the sound on a pad -->
+  <div id="picker-modal" class="modal">
+    <div class="picker-panel">
+      <div class="col-head">
+        <h2 id="picker-title">CHOOSE A SOUND</h2>
+        <button id="picker-close" class="col-close" title="Close">&#10005;</button>
+      </div>
+      <div id="picker-grid" class="picker-grid"></div>
+      <button id="picker-remove" class="hw jam-wide pp-danger" style="display:none;">Remove this pad</button>
+    </div>
+  </div>
+
+  <!-- Unlock reveal modal -->
+  <div id="reveal-modal" class="modal">
+    <div class="modal-card">
+      <div id="reveal-confetti" class="confetti"></div>
+      <h2 id="reveal-title">New sound</h2>
+      <div id="reveal-ico" class="reveal-ico"></div>
+      <div class="name" id="reveal-name"></div>
+      <div class="kind" id="reveal-kind"></div>
+      <button id="reveal-close" class="hw primary">Nice!</button>
+    </div>
+  </div>
+
+  <!-- Hidden side-scope canvas (JS expects it) -->
+  <div class="side-scope-card">
+    <canvas id="side-scope" width="352" height="120"></canvas>
+  </div>
+
+  <!-- Third-party Libraries -->
+  <script src="node_modules/tone/build/Tone.js"></script>
+  <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js"></script>
+
+  <!-- App modules. Plain scripts that attach to window; load order matters. -->
+  <script src="src/cameraStub.js"></script>
+  <script src="src/vision/vision.js"></script>
+  <script src="src/data/profile.js"></script>
+  <script src="src/library.js"></script>
+  <script src="src/audioEngine.js"></script>
+  <script src="src/multiplayer/network.js"></script>
+  <script src="src/multiplayer/jam.js"></script>
+  <script src="src/ui.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <!-- Temporarily disabled for UI development
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+          console.log('[PWA] ServiceWorker registered with scope:', registration.scope);
+        }).catch(err => {
+          console.error('[PWA] ServiceWorker registration failed:', err);
+        });
+      });
+    }
+  </script>
+  -->
+</body>
+</html>
