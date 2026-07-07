@@ -16,6 +16,10 @@ const ui = (function () {
   //   { stepCells: [...], setPitchDisplay(i, v), muteBtn }
   const trackDom = {};
 
+  // Which tracks have their advanced (pitch/vel/gate/fx) lanes expanded — kept
+  // across sequencer rebuilds so a structural edit doesn't collapse your lanes.
+  const advOpenTracks = {};
+
   // ---- startup ---------------------------------------------------------------
 
   async function init() {
@@ -34,6 +38,7 @@ const ui = (function () {
     setupJamPanel();
 
     setupDeck();
+    setupModuleControls();
     setupSequencerTransport();
     setupTopBar();
     setupProfilePanel();
@@ -47,8 +52,10 @@ const ui = (function () {
       document.getElementById('vision-status')
     ).then(setupCameraPicker);
     renderLibrary();
+    syncTracksToPads(); // the kit IS the sequencer — mirror pads into rows
     renderSequencer();
     startScope();
+    if (window.Visualizer) Visualizer.start(document.getElementById('live-scope'));
 
     // When an object is "scanned" (button today, camera later), unlock it.
     cameraStub.onObjectScanned(handleScan);
@@ -64,6 +71,54 @@ const ui = (function () {
   // ---- deck & track selection ------------------------------------------------
 
   let activeTrackIndex = 0; // 0..3 for TR1..TR4, 'fx' for FX
+  
+  function setupModuleControls() {
+    // Fullscreen for Scanner
+    const camFsBtn = document.getElementById('cam-fullscreen-btn');
+    if (camFsBtn) {
+      camFsBtn.addEventListener('click', () => {
+        const wrapper = document.getElementById('card-video').closest('.panel-rot-wrapper');
+        if (wrapper) {
+          wrapper.classList.toggle('module-fullscreen');
+          Jam.triggerResize();
+        }
+      });
+    }
+
+    // Fullscreen for Sequencer
+    const seqFsBtn = document.getElementById('seq-fullscreen-btn');
+    if (seqFsBtn) {
+      seqFsBtn.addEventListener('click', () => {
+        const wrapper = document.getElementById('card-seq').closest('.panel-rot-wrapper');
+        if (wrapper) wrapper.classList.toggle('module-fullscreen');
+      });
+    }
+
+    // Camera Toggle
+    let cameraEnabled = true;
+    const camToggleBtn = document.getElementById('cam-toggle-btn');
+    const overlay = document.getElementById('cam-disabled-overlay');
+    if (camToggleBtn && overlay) {
+      camToggleBtn.addEventListener('click', () => {
+        cameraEnabled = !cameraEnabled;
+        if (!cameraEnabled) {
+          if (window.Vision && Vision.stop) Vision.stop();
+          overlay.classList.add('show');
+          camToggleBtn.style.color = 'var(--red, #FF3366)';
+        } else {
+          if (window.Vision && Vision.start) {
+            Vision.start(
+              document.getElementById('camera-video'),
+              document.getElementById('camera-canvas'),
+              document.getElementById('vision-status')
+            );
+          }
+          overlay.classList.remove('show');
+          camToggleBtn.style.color = 'var(--ink)';
+        }
+      });
+    }
+  }
 
   function setupDeck() {
     // XY morph pad: every colour zone is one effect; the cursor position
@@ -71,6 +126,15 @@ const ui = (function () {
     const xy = document.getElementById('xy-pad');
     if (xy) {
       const cur = xy.querySelector('.xy-cursor');
+      const bypassBtn = document.getElementById('xy-bypass');
+
+      // Reflect "is the rack dry?" on both the cursor and the DRY button, so the
+      // player always knows whether an effect is engaged.
+      function setDry(dry) {
+        cur.classList.toggle('off', dry);
+        if (bypassBtn) bypassBtn.classList.toggle('on', dry);
+      }
+
       function placeXy(ev) {
         const r = xy.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
@@ -80,9 +144,10 @@ const ui = (function () {
         audioEngine.setFxMorph(x, y);
       }
       xy.addEventListener('pointerdown', function (e) {
+        if (bypassBtn && (e.target === bypassBtn || bypassBtn.contains(e.target))) return;
         e.preventDefault();
         audioEngine.unlock();
-        cur.classList.remove('off');
+        setDry(false); // grabbing the pad engages the rack
         xy.setPointerCapture(e.pointerId);
         placeXy(e);
         function up() {
@@ -92,11 +157,18 @@ const ui = (function () {
         xy.addEventListener('pointermove', placeXy);
         xy.addEventListener('pointerup', up);
       });
-      // Double-click bypasses the rack (everything dry, filter wide open).
-      xy.addEventListener('dblclick', function () {
-        cur.classList.add('off');
+
+      // Explicit "no effect": the DRY button (and double-click) drop the whole
+      // rack to dry so there's a clear, findable neutral.
+      function bypass() {
+        setDry(true);
         audioEngine.fxBypass();
-      });
+      }
+      if (bypassBtn) {
+        bypassBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        bypassBtn.addEventListener('click', function (e) { e.stopPropagation(); bypass(); });
+      }
+      xy.addEventListener('dblclick', bypass);
     }
   }
 
@@ -106,6 +178,7 @@ const ui = (function () {
 
   function renderTrackBar() {
     const wrap = document.getElementById('track-selectors');
+    if (!wrap) return;
     wrap.innerHTML = '';
     const tracks = audioEngine.getTracks();
     const slots = Math.max(4, tracks.length); // always show at least 4 slots
@@ -122,7 +195,7 @@ const ui = (function () {
         b.style.setProperty('--tc', d.type.color);
         b.title = track.displayName;
       } else {
-        b.title = 'Empty slot — add a sound with + Seq';
+        b.title = 'Empty slot — scan an object or tap + on your kit';
       }
       (function (i) {
         b.addEventListener('click', function () {
@@ -185,6 +258,25 @@ const ui = (function () {
     Jam.on('pitch', function (trackId, i, val) {
       const dom = trackDom[trackId];
       if (dom) dom.setPitchDisplay(i, val);
+    });
+
+    Jam.on('vel', function (trackId, i, val) {
+      const dom = trackDom[trackId];
+      if (dom) dom.setLane('vel', i, val);
+    });
+
+    Jam.on('len', function (trackId, i, val) {
+      const dom = trackDom[trackId];
+      if (dom) dom.setLane('len', i, val);
+    });
+
+    Jam.on('fx', function (trackId, fxName, i, val) {
+      const dom = trackDom[trackId];
+      if (dom) dom.setLane('fx_' + fxName, i, val);
+    });
+
+    Jam.on('patternLen', function (len) {
+      renderSequencer();
     });
 
     Jam.on('mute', function (trackId, muted) {
@@ -432,6 +524,7 @@ const ui = (function () {
       padBank = null;         // pads are per-account too
       selectedPadId = null;
       renderLibrary();
+      syncTracksToPads();     // swap the sequencer to the new account's kit
       if (document.getElementById('collection-modal').classList.contains('active')) {
         renderCollection();
       }
@@ -544,12 +637,16 @@ const ui = (function () {
           audioEngine.previewSample(item.key);
         });
       } else {
+        const clue = objectClue(item.key);
         card.className = 'col-item locked';
         card.innerHTML =
           '<span class="ci-ico"><span class="ci-hatch"></span></span>' +
           '<span class="ci-name">? ? ?</span>' +
-          '<span class="ci-kind">' + item.d.type.label + '</span>' + rarHtml;
-        card.title = 'Still hiding — scan the world to find it';
+          '<span class="ci-kind">' + item.d.type.label + '</span>' + rarHtml +
+          '<span class="ci-clue"></span>';
+        // Clue: the real-world object you have to scan to unlock this sound.
+        card.querySelector('.ci-clue').textContent = '🔍 Scan a ' + clue;
+        card.title = 'Scan a ' + clue + ' in the real world to unlock this sound';
       }
       grid.appendChild(card);
     });
@@ -572,9 +669,12 @@ const ui = (function () {
     // "stuck". At most it gives a quiet toast, throttled.
     if (result.isNewUnlock) {
       // land the new sound on a fresh pad (padBank holds {id,key,snd} objects)
+      // and, since the kit IS the sequencer, drop it straight into a row too.
       if (!padBank.some(function (p) { return p.key === key; })) {
-        padBank.push(makePad(key));
+        const np = makePad(key);
+        padBank.push(np);
         savePadBank();
+        addPadTrack(np);
       }
       renderLibrary();
       // don't stack modals — if one's already up, just toast instead
@@ -723,6 +823,42 @@ const ui = (function () {
     legendary: { label: 'Legendary', stars: '★★★', color: '#C6A12D', order: 3 },
   };
 
+  // A pool of distinct flat glyphs. Every SOUND (not just every type) picks one
+  // by hash, so sixteen "Hi-Hat"s no longer share one icon. Paired with a
+  // per-sound colour below, each sound gets its own visual identity.
+  const GLYPHS = [
+    '<circle cx="12" cy="12" r="8.5"/>',
+    '<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="3"/>',
+    '<rect x="4.5" y="4.5" width="15" height="15" rx="2.6"/>',
+    '<rect x="6" y="6" width="12" height="12" rx="2" transform="rotate(45 12 12)"/>',
+    '<path d="M12 3.4 L20.6 19.6 L3.4 19.6 Z"/>',
+    '<path d="M3.4 4.4 L20.6 4.4 L12 20.6 Z"/>',
+    '<path d="M12 2 L14 9.6 L21.8 12 L14 14.4 L12 22 L10 14.4 L2.2 12 L10 9.6 Z"/>',
+    '<path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z"/>',
+    '<path d="M12 3 C12 3 19 11.2 19 15 A7 7 0 0 1 5 15 C5 11.2 12 3 12 3 Z"/>',
+    '<path d="M13.4 2 L5 13 H11 L10.2 22 L19 9.6 H13 Z"/>',
+    '<path d="M5 5.6 L12 12 L5 18.4" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M12 5.6 L19 12 L12 18.4" fill="none" stroke="currentColor" stroke-width="2.6"/>',
+    '<path d="M4 14 Q12 4 20 14" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M7.5 18 Q12 12 16.5 18" fill="none" stroke="currentColor" stroke-width="2.4"/>',
+    '<circle cx="8" cy="8" r="2.9"/><circle cx="16" cy="8" r="2.9"/><circle cx="8" cy="16" r="2.9"/><circle cx="16" cy="16" r="2.9"/>',
+    '<rect x="10" y="3.4" width="4" height="17.2" rx="1.6"/><rect x="3.4" y="10" width="17.2" height="4" rx="1.6"/>',
+    '<path d="M3 12 Q7 5 11 12 T19 12" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M3 17.5 Q7 10.5 11 17.5 T19 17.5" fill="none" stroke="currentColor" stroke-width="2.4"/>',
+    '<path d="M12 2.5 L21.5 8 V16 L12 21.5 L2.5 16 V8 Z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="2.6"/>',
+  ];
+
+  // Deterministic per-sound colour: golden-angle hue spread keeps neighbouring
+  // sounds far apart on the wheel, so a kit of 16 reads as 16 colours.
+  function soundColor(h) {
+    return 'hsl(' + Math.round((h * 137.508) % 360) + ', 58%, 47%)';
+  }
+  function soundGlyph(h) {
+    return icon(GLYPHS[h % GLYPHS.length]);
+  }
+
+  // Turn a detector key ("traffic_light") into a human clue ("Traffic Light").
+  function objectClue(key) {
+    return String(key || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function describeSample(objectType, displayName) {
     const n = (displayName || '').toLowerCase();
     let cat = 'fx';
@@ -750,7 +886,16 @@ const ui = (function () {
     const note  = NOTES[h % 12] + (1 + (h >> 4) % 4);
     const choke = (h % 6 === 0) ? 'None' : ('Self');
 
-    return { cat: cat, type: SAMPLE_TYPES[cat], rarity: rarity, note: note, choke: choke };
+    // Give this exact sound its own colour + glyph, overriding the shared type
+    // visuals. Everything that renders through d.type.color / d.type.icon (pads,
+    // mixer, sequencer rows, collection, reveal) becomes per-sound for free.
+    // d.type.label stays the category name ("Hi-Hat") so the drum's role reads.
+    const type = Object.assign({}, SAMPLE_TYPES[cat], {
+      color: soundColor(h),
+      icon: soundGlyph(h),
+    });
+
+    return { cat: cat, type: type, rarity: rarity, note: note, choke: choke };
   }
 
   // ---- waveform drawing ------------------------------------------------------
@@ -810,8 +955,9 @@ const ui = (function () {
     { label: 'R', field: 'release', min: 0, max: 1.20 },
   ];
 
-  // Vertical fader: top of the track = 1, bottom = 0.
-  function attachVFader(vfader, initial, onChange) {
+  // Vertical fader: top of the track = 1, bottom = 0. `resetNorm` (optional) is
+  // the normalised default a double-click snaps back to.
+  function attachVFader(vfader, initial, onChange, resetNorm) {
     const handle = vfader.querySelector('.vhandle');
     const track = vfader.querySelector('.vtrack');
     function set(v) {
@@ -836,10 +982,12 @@ const ui = (function () {
       vfader.addEventListener('pointermove', move);
       vfader.addEventListener('pointerup', up);
     });
+    if (resetNorm != null) vfader.addEventListener('dblclick', function () { set(resetNorm); });
   }
 
-  // Horizontal slider: left = 0, right = 1.
-  function attachHSlider(hslider, initial, onChange) {
+  // Horizontal slider: left = 0, right = 1. `resetNorm` (optional) is the
+  // normalised default a double-click snaps back to.
+  function attachHSlider(hslider, initial, onChange, resetNorm) {
     const knob = hslider.querySelector('.hknob');
     function set(n) {
       n = Math.max(0, Math.min(1, n));
@@ -863,6 +1011,7 @@ const ui = (function () {
       hslider.addEventListener('pointermove', move);
       hslider.addEventListener('pointerup', up);
     });
+    if (resetNorm != null) hslider.addEventListener('dblclick', function () { set(resetNorm); });
   }
 
   // ---- library tab -----------------------------------------------------------
@@ -970,6 +1119,32 @@ const ui = (function () {
     return padBank.find(function (p) { return p.id === id; });
   }
 
+  // ---- kit <-> sequencer (they are one) --------------------------------------
+  // A pad in the kit IS a row in the sequencer — no separate "add" step. These
+  // keep the two in lockstep as pads come and go.
+
+  // Drop a pad into the sequencer as its own row, linked back by the pad id so
+  // later SOUND-panel edits keep flowing to it.
+  function addPadTrack(pad) {
+    const info = describeKey(pad.key).info;
+    Jam.addTrack(pad.key, info.displayName, pad.snd, pad.id);
+  }
+
+  // Give any pad that lacks a row one, and drop rows whose pad is gone. Solo
+  // only: in a jam the shared project is the source of truth, so we never
+  // auto-push the local kit into the room.
+  function syncTracksToPads() {
+    if (window.Jam && Jam.role && Jam.role() !== 'offline') return;
+    if (padBank == null) loadPadBank();
+    padBank.forEach(function (pad) {
+      if (audioEngine.getTrackIdForPad(pad.id) == null) addPadTrack(pad);
+    });
+    audioEngine.getTracks().forEach(function (t) {
+      const sp = audioEngine.getPadForTrack(t.id);
+      if (sp && !padBank.some(function (p) { return p.id === sp; })) Jam.removeTrack(t.id);
+    });
+  }
+
   function renderLibrary() {
     const grid = document.getElementById('library-grid');
     grid.innerHTML = '';
@@ -1014,6 +1189,9 @@ const ui = (function () {
         cell.classList.remove('pop');
         void cell.offsetWidth; // restart the squash animation
         cell.classList.add('pop');
+        // Tapping a pad loads its waveform into the Live Signal panel; until then
+        // the panel stays empty (no default drum).
+        if (window.Visualizer && Visualizer.setSample) Visualizer.setSample(pad.key, item.d.type.color);
         audioEngine.previewSample(pad.key, pad.snd);
       });
 
@@ -1062,6 +1240,9 @@ const ui = (function () {
     document.getElementById('picker-remove').addEventListener('click', function () {
       const idx = padBank.findIndex(function (p) { return p.id === pickerTargetId; });
       if (idx !== -1) {
+        // Pulling a pad from the kit also pulls its row from the sequencer.
+        const tid = audioEngine.getTrackIdForPad(padBank[idx].id);
+        if (tid != null) Jam.removeTrack(tid);
         padBank.splice(idx, 1);
         savePadBank();
         renderLibrary();
@@ -1100,9 +1281,16 @@ const ui = (function () {
           const np = makePad(key);
           padBank.push(np);
           selectedPadId = np.id;
+          addPadTrack(np);                       // new pad => new sequencer row
         } else {
           const t = findPad(pickerTargetId);
-          if (t) { t.key = key; t.snd = defaultSnd(key); selectedPadId = t.id; }
+          if (t) {
+            t.key = key; t.snd = defaultSnd(key); selectedPadId = t.id;
+            // Swap the pad's existing row to the new sound (keeps its steps).
+            const tid = audioEngine.getTrackIdForPad(t.id);
+            if (tid != null) Jam.swapTrack(tid, key, describeKey(key).info.displayName, t.snd);
+            else addPadTrack(t);
+          }
         }
         savePadBank();
         modal.classList.remove('active');
@@ -1147,11 +1335,6 @@ const ui = (function () {
           '<button class="ed-play" title="Preview">' + playSvg + '</button>' +
         '</div>' +
         '<canvas class="ed-wave" width="800" height="150" data-otype="' + objectType + '" data-color="' + d.type.color + '"></canvas>' +
-        '<button class="ed-add" title="Drop this sound into the sequencer">' +
-          '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">' +
-          '<rect x="3" y="10.5" width="3" height="3" rx="1"/><rect x="9" y="7" width="3" height="10" rx="1"/>' +
-          '<rect x="15" y="4" width="3" height="16" rx="1"/></svg>' +
-          '<span>Add to sequencer</span></button>' +
       '</div>' +
       '<div class="ed-side">' +
         '<div class="ed-faders">' +
@@ -1175,9 +1358,6 @@ const ui = (function () {
     editor.querySelector('.ed-play').addEventListener('click', function () {
       audioEngine.previewSample(pad.key, pad.snd);
     });
-    editor.querySelector('.ed-add').addEventListener('click', function () {
-      addTrack(pad.key, name, pad.snd, pad.id);
-    });
 
     const canvas = editor.querySelector('.ed-wave');
     drawWaveform(canvas, objectType, d.type.color);
@@ -1192,12 +1372,15 @@ const ui = (function () {
       savePadBank();
       audioEngine.updateTrackSndForPad(pad.id, pad.snd);
     };
+    // The sample's own defaults — what a double-click on a fader initialises to.
+    const defSnd = defaultSnd(pad.key);
     ADSR_SPECS.forEach(function (spec, i) {
       const norm = (s[spec.field] - spec.min) / (spec.max - spec.min);
+      const defNorm = (defSnd[spec.field] - spec.min) / (spec.max - spec.min);
       attachVFader(faderEls[i], norm, function (n) {
         s[spec.field] = spec.min + n * (spec.max - spec.min);
         commit();
-      });
+      }, defNorm);
     });
 
     const tuneSlider = editor.querySelector('.hslider.tune');
@@ -1212,7 +1395,7 @@ const ui = (function () {
       s.cents = st * 100;
       commit();
       setTuneText(st);
-    });
+    }, 0.5); // double-click -> 0 st (centre)
   }
 
   // ---- mixer (the crayon bars) -------------------------------------------------
@@ -1230,11 +1413,6 @@ const ui = (function () {
     area.innerHTML = '';
     Object.keys(mixerDom).forEach(function (k) { delete mixerDom[k]; });
 
-    const muteLabel = document.createElement('div');
-    muteLabel.className = 'mix-mute-label';
-    muteLabel.textContent = 'Mute';
-    area.appendChild(muteLabel);
-
     const tracks = audioEngine.getTracks();
 
     // No tracks yet: just show a simple clean hint
@@ -1251,48 +1429,74 @@ const ui = (function () {
 
       const slot = document.createElement('div');
       slot.className = 'mix-slot' + (track.muted ? ' muted' : '');
-      slot.title = track.displayName + ' — drag for volume, tap the number to mute';
+      slot.title = track.displayName + ' — drag to set level, double-click to reset';
+      slot.style.setProperty('--bar-color', d.type.color);
 
-      slot.style.setProperty('--bar-color', d.type.color); // crayon + number strip
+      // Channel number (top) so a bar maps back to its sequencer row.
+      const num = document.createElement('div');
+      num.className = 'mix-num';
+      num.textContent = idx + 1;
+      slot.appendChild(num);
 
       const crayon = document.createElement('div');
       crayon.className = 'mix-crayon';
       crayon.style.setProperty('--v', volToHeight(track.volume == null ? 0.8 : track.volume));
       slot.appendChild(crayon);
 
+      // The strip carries the track's TYPE ICON, so you can tell kick from hat
+      // at a glance even across 16 skinny channels.
       const strip = document.createElement('div');
       strip.className = 'mix-strip';
-      strip.innerHTML = SEG(idx + 1, 10);
+      strip.innerHTML = '<span class="ms-ico">' + d.type.icon + '</span>';
+      strip.title = track.displayName;
       slot.appendChild(strip);
 
-      // Drag anywhere on the column to ride the level. Pointer capture
-      // retargets the tail of the gesture, so mute-taps are resolved here too:
-      // a press that started on the strip and never moved is a mute toggle.
+      // An explicit, unmissable mute toggle (the old "tap the number" was invisible).
+      const muteBtn = document.createElement('button');
+      muteBtn.className = 'mix-mute';
+      muteBtn.textContent = track.muted ? 'MUTED' : 'MUTE';
+      muteBtn.title = 'Mute / unmute ' + track.displayName;
+      muteBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      muteBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        Jam.setMute(track.id, !slot.classList.contains('muted'));
+      });
+      slot.appendChild(muteBtn);
+
+      // Absolute fader across the bar region (the area above the strip + mute),
+      // so the level tracks your finger: top of the region = full, strip = zero.
+      function setFromEvent(ev) {
+        const r = slot.getBoundingClientRect();
+        const stripTop = strip.getBoundingClientRect().top;
+        const usable = Math.max(1, stripTop - r.top);
+        const v = Math.max(0, Math.min(1, (stripTop - ev.clientY) / usable));
+        Jam.setVolume(track.id, Math.round(v * 100) / 100);
+      }
       slot.addEventListener('pointerdown', function (e) {
+        if (e.target === muteBtn || muteBtn.contains(e.target)) return; // mute handles itself
         e.preventDefault();
         slot.setPointerCapture(e.pointerId);
-        const startY = e.clientY;
-        const startV = audioEngine.getTrackVolume(track.id);
-        const onStrip = strip.contains(e.target);
-        let moved = false;
-        function move(ev) {
-          if (Math.abs(ev.clientY - startY) > 3) moved = true;
-          if (!moved) return;
-          const v = Math.max(0, Math.min(1, startV + (startY - ev.clientY) / 150));
-          Jam.setVolume(track.id, Math.round(v * 100) / 100);
-        }
+        setFromEvent(e);
+        function move(ev) { setFromEvent(ev); }
         function up() {
           slot.removeEventListener('pointermove', move);
           slot.removeEventListener('pointerup', up);
-          if (!moved && onStrip) Jam.setMute(track.id, !slot.classList.contains('muted'));
         }
         slot.addEventListener('pointermove', move);
         slot.addEventListener('pointerup', up);
       });
+      // Double-click resets the channel to the default level.
+      slot.addEventListener('dblclick', function (e) {
+        if (e.target === muteBtn || muteBtn.contains(e.target)) return;
+        Jam.setVolume(track.id, 0.8);
+      });
 
       mixerDom[track.id] = {
         setVol: function (v) { crayon.style.setProperty('--v', volToHeight(v)); },
-        setMuted: function (m) { slot.classList.toggle('muted', m); },
+        setMuted: function (m) {
+          slot.classList.toggle('muted', m);
+          muteBtn.textContent = m ? 'MUTED' : 'MUTE';
+        },
         hit: function () {
           crayon.classList.remove('hit');
           void crayon.offsetWidth; // restart the pulse
@@ -1361,21 +1565,40 @@ const ui = (function () {
 
   // ---- sequencer tab ---------------------------------------------------------
 
-  function addTrack(objectType, displayName, snd, srcPad) {
-    // Goes through Jam: adds locally when solo, or into the shared project when
-    // in a session. The 'pattern' event re-renders the grid either way. `snd`
-    // carries the pad's own sound shaping onto the new track; `srcPad` links it
-    // back to the pad so later SOUND-panel edits keep flowing to it.
-    Jam.addTrack(objectType, displayName, snd, srcPad);
-    switchToTab('sequencer'); // jump to the grid so the new row is visible
-  }
-
   function renderSequencer() {
     renderMixer(); // the crayon bars mirror the track list 1:1
 
     const container = document.getElementById('sequencer-tracks');
     container.innerHTML = '';
     Object.keys(trackDom).forEach(function (k) { delete trackDom[k]; });
+    
+    const pLen = (window.audioEngine && audioEngine.getPatternLen) ? audioEngine.getPatternLen() : 16;
+    
+    // Pattern length selector
+    const patLenBar = document.getElementById('pat-len-bar');
+    if (patLenBar) {
+      patLenBar.innerHTML = '';
+      [4, 8, 12, 16].forEach(function (len) {
+        const b = document.createElement('button');
+        b.className = 'pat-len-btn' + (len === pLen ? ' active' : '');
+        b.textContent = len + ' STEPS';
+        b.addEventListener('click', function () {
+          if (window.Jam && Jam.setPatternLen) Jam.setPatternLen(len);
+        });
+        patLenBar.appendChild(b);
+      });
+    }
+    
+    // Dynamic ruler
+    const ruler = document.querySelector('.ruler-steps');
+    if (ruler) {
+      ruler.innerHTML = '';
+      for (let i = 1; i <= pLen; i++) {
+        const sp = document.createElement('span');
+        sp.textContent = i;
+        ruler.appendChild(sp);
+      }
+    }
 
     // The engine's track list IS the project (local or synced) — render from it.
     const tracks = audioEngine.getTracks();
@@ -1383,7 +1606,7 @@ const ui = (function () {
     if (tracks.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'empty';
-      empty.textContent = 'No tracks yet — tap a keypad pad, then + Seq to drop it here.';
+      empty.textContent = 'No sounds yet — scan an object or tap + on your kit to fill the sequencer.';
       container.appendChild(empty);
       return;
     }
@@ -1400,34 +1623,36 @@ const ui = (function () {
       const row = document.createElement('div');
       row.className = 'track-row';
 
-      // Label: the type pictogram in its colour, the name, and (in a jam)
-      // who dropped the track in.
-      const label = document.createElement('div');
-      label.className = 'track-label';
-      label.innerHTML = '<span class="tl-ico" style="color:' + d.type.color + '">' +
-        d.type.icon + '</span><span class="tl-txt"><span class="tl-nm"></span>' +
+      // Split into sticky icon and scrolling text
+      const icoWrap = document.createElement('div');
+      icoWrap.className = 'tl-ico-wrap';
+      icoWrap.style.cursor = 'pointer';
+      icoWrap.title = 'Per-step pitch, velocity, gate & FX';
+      icoWrap.innerHTML = '<span class="tl-ico" style="background:' + d.type.color + '">' +
+        d.type.icon + '<span class="adv-indicator" style="font-size:8px; margin-left:3px; opacity:0.6; display:inline-block; transition:transform 0.2s;">▼</span></span>';
+      
+      if (advOpenTracks[track.id]) { block.classList.add('adv-open'); }
+      icoWrap.addEventListener('click', function () {
+        const open = !block.classList.contains('adv-open');
+        block.classList.toggle('adv-open', open);
+        advOpenTracks[track.id] = open;
+      });
+      row.appendChild(icoWrap);
+
+      const txtWrap = document.createElement('div');
+      txtWrap.className = 'tl-txt-wrap';
+      txtWrap.innerHTML = '<span class="tl-txt"><span class="tl-nm"></span>' +
         '<span class="tl-by"></span></span>';
-      label.querySelector('.tl-nm').textContent = track.displayName;
-      const tlBy = label.querySelector('.tl-by');
-      if (track.by) tlBy.textContent = track.by;
-      else tlBy.remove();
-      label.title = track.displayName + (track.by ? ' — added by ' + track.by : '');
-      row.appendChild(label);
+      txtWrap.querySelector('.tl-nm').textContent = track.displayName;
+      const tlBy = txtWrap.querySelector('.tl-by');
+      if (track.by && window.Jam && Jam.role && Jam.role() !== 'offline') {
+        tlBy.textContent = track.by;
+      } else {
+        tlBy.remove();
+      }
+      row.appendChild(txtWrap);
 
       const stepCells = [];
-      const laneCells = [];
-
-      // Paint a step's pitch onto its step indicator and lane cell (DOM only —
-      // the value itself lives in the engine and arrives via Jam's 'pitch' event).
-      function setPitchDisplay(i, p) {
-        const sp = stepCells[i].querySelector('.step-pitch');
-        sp.textContent = p === 0 ? '' : (p > 0 ? '+' + p : '' + p);
-        stepCells[i].classList.toggle('tuned', p !== 0);
-        const lc = laneCells[i];
-        lc.textContent = p === 0 ? '0' : (p > 0 ? '+' + p : '' + p);
-        lc.classList.toggle('nz', p !== 0);
-        lc.title = 'Step ' + (i + 1) + ' pitch ' + (p > 0 ? '+' : '') + p + ' st';
-      }
 
       // 16 step cells (click = on/off).
       const steps = document.createElement('div');
@@ -1436,6 +1661,7 @@ const ui = (function () {
         const cell = document.createElement('button');
         cell.className = 'step';
         if (i % 4 === 0) cell.classList.add('beat-start');
+        if (i >= audioEngine.getPatternLen()) cell.classList.add('step-hidden');
         cell.setAttribute('data-step', i);
         cell.classList.toggle('on', audioEngine.getStepOn(track.id, i));
         // ring = the shape-following playhead outline; shape = the polygon itself
@@ -1469,58 +1695,178 @@ const ui = (function () {
       const remove = document.createElement('button');
       remove.className = 'track-remove';
       remove.textContent = '✕';
-      remove.title = 'Remove track';
+      remove.title = 'Remove from kit & sequencer';
       remove.addEventListener('click', function () {
+        // The row and its kit pad are the same thing — remove both.
+        const padId = audioEngine.getPadForTrack(track.id);
+        if (padId && padBank) {
+          const pi = padBank.findIndex(function (p) { return p.id === padId; });
+          if (pi !== -1) { padBank.splice(pi, 1); savePadBank(); }
+        }
         Jam.removeTrack(track.id);
+        renderLibrary();
       });
       row.appendChild(remove);
 
       block.appendChild(row);
 
-      // ----- visible per-step PITCH lane (drag a cell up/down to tune) -----
-      const lane = document.createElement('div');
-      lane.className = 'pitch-lane';
-      const laneLabel = document.createElement('div');
-      laneLabel.className = 'pitch-lane-label';
-      laneLabel.textContent = 'Pitch';
-      lane.appendChild(laneLabel);
+      // ----- advanced per-step lanes: PITCH · VEL · GATE · FX -----
+      const adv = document.createElement('div');
+      adv.className = 'track-adv';
 
-      const laneCellsWrap = document.createElement('div');
-      laneCellsWrap.className = 'pitch-cells';
-      for (let i = 0; i < audioEngine.STEP_COUNT; i++) {
-        const pc = document.createElement('div');
-        pc.className = 'pitch-cell';
-        if (i % 4 === 0) pc.classList.add('beat-start');
-        (function (i) {
-          // Drag vertically (≈6px per semitone), scroll, or right-click/double-click to reset.
-          pc.addEventListener('pointerdown', function (e) {
-            e.preventDefault();
-            pc.setPointerCapture(e.pointerId);
-            const startY = e.clientY;
-            const startVal = audioEngine.getStepPitch(track.id, i);
-            function move(ev) { Jam.setStepPitch(track.id, i, startVal + Math.round((startY - ev.clientY) / 6)); }
-            function up() { pc.removeEventListener('pointermove', move); pc.removeEventListener('pointerup', up); }
-            pc.addEventListener('pointermove', move);
-            pc.addEventListener('pointerup', up);
-          });
-          pc.addEventListener('wheel', function (e) {
-            e.preventDefault();
-            Jam.setStepPitch(track.id, i, audioEngine.getStepPitch(track.id, i) + (e.deltaY < 0 ? 1 : -1));
-          }, { passive: false });
-          pc.addEventListener('contextmenu', function (e) { e.preventDefault(); Jam.setStepPitch(track.id, i, 0); });
-          pc.addEventListener('dblclick', function () { Jam.setStepPitch(track.id, i, 0); });
-        })(i);
-        laneCells.push(pc);
-        laneCellsWrap.appendChild(pc);
+      // FX-type picker — which insert effect this track's FX lane drives. Each
+      // effect owns a colour (matching the XY pad zones); the FX lane repaints in
+      // that colour + names the effect, so a step's FX is unmistakable.
+      const FX_META = {
+        filter: { label: 'Filter', color: '#2F5DE0' },
+        drive:  { label: 'Drive',  color: '#E67E22' },
+        crush:  { label: 'Crush',  color: '#E0A32E' },
+        delay:  { label: 'Echo',   color: '#3FA34D' },
+        reverb: { label: 'Verb',   color: '#7C5CFF' },
+      };
+      const fxOrder = ['filter', 'drive', 'crush', 'delay', 'reverb'];
+      let curFxType = 'filter';
+      const fxBtns = {};
+      // Same label-column structure as the lanes, so the buttons line up with the
+      // step grid instead of floating out of alignment.
+      const fxPick = document.createElement('div');
+      fxPick.className = 'pitch-lane adv-fxpick';
+      const fxPickIco = document.createElement('div');
+      fxPickIco.className = 'pitch-lane-ico';
+      fxPickIco.textContent = 'FX';
+      fxPick.appendChild(fxPickIco);
+        
+      const fxPickTxt = document.createElement('div');
+      fxPickTxt.className = 'pitch-lane-txt';
+      fxPickTxt.textContent = ' drives';
+      fxPick.appendChild(fxPickTxt);
+      const fxBtnWrap = document.createElement('div');
+      fxBtnWrap.className = 'adv-fxbtns';
+      fxOrder.forEach(function (k) {
+        const b = document.createElement('button');
+        b.className = 'adv-fxbtn' + (k === curFxType ? ' active' : '');
+        b.textContent = FX_META[k].label;
+        b.style.setProperty('--fxc', FX_META[k].color);
+        b.addEventListener('click', function () { applyFxVisual(k); });
+        fxBtns[k] = b;
+        fxBtnWrap.appendChild(b);
+      });
+      fxPick.appendChild(fxBtnWrap);
+
+      // Stamp the little pitch badge onto a step cell (pitch lane only).
+      function setPitchStepBadge(i, p) {
+        const sp = stepCells[i].querySelector('.step-pitch');
+        sp.textContent = p === 0 ? '' : (p > 0 ? '+' + p : '' + p);
+        stepCells[i].classList.toggle('tuned', p !== 0);
       }
-      lane.appendChild(laneCellsWrap);
-      block.appendChild(lane);
 
-      // Initialise both displays from the engine's current values.
-      for (let i = 0; i < audioEngine.STEP_COUNT; i++) setPitchDisplay(i, audioEngine.getStepPitch(track.id, i));
+      // Generic draggable lane. Drag a cell up/down, scroll, or double / right-click
+      // to reset. Cells only show a value when they deviate from default, keeping
+      // the lane visually quiet.
+      const laneSetters = {};
+      const laneEls = {};
+      function buildLane(spec) {
+        const lane = document.createElement('div');
+        lane.className = 'pitch-lane';
+        const labIco = document.createElement('div');
+        labIco.className = 'pitch-lane-ico';
+        labIco.textContent = spec.label.substring(0, 3);
+        lane.appendChild(labIco);
+          
+        const labTxt = document.createElement('div');
+        labTxt.className = 'pitch-lane-txt';
+        labTxt.textContent = spec.label.substring(3);
+        lane.appendChild(labTxt);
+        const wrap = document.createElement('div');
+        wrap.className = 'pitch-cells';
+        const cells = [];
+        function setDisplay(i, v) {
+          const c = cells[i];
+          c.textContent = spec.fmt(v);
+          c.classList.toggle('nz', spec.nz(v));
+          c.title = 'Step ' + (i + 1) + ' ' + spec.label.toLowerCase() + ' ' + spec.fmt(v) + (spec.unitLabel || '');
+          if (spec.kind === 'pitch') setPitchStepBadge(i, v);
+        }
+        function clamp(v) { return Math.max(spec.min, Math.min(spec.max, spec.round ? Math.round(v) : v)); }
+        for (let i = 0; i < audioEngine.STEP_COUNT; i++) {
+          const pc = document.createElement('div');
+          pc.className = 'pitch-cell';
+          if (i % 4 === 0) pc.classList.add('beat-start');
+          if (i >= audioEngine.getPatternLen()) pc.classList.add('pitch-cell-hidden');
+          (function (i) {
+            pc.addEventListener('pointerdown', function (e) {
+              e.preventDefault();
+              pc.setPointerCapture(e.pointerId);
+              const startY = e.clientY;
+              const startVal = spec.get(track.id, i);
+              function move(ev) {
+                spec.set(track.id, i, clamp(startVal + ((startY - ev.clientY) / spec.px) * spec.unit));
+              }
+              function up() { pc.removeEventListener('pointermove', move); pc.removeEventListener('pointerup', up); }
+              pc.addEventListener('pointermove', move);
+              pc.addEventListener('pointerup', up);
+            });
+            pc.addEventListener('wheel', function (e) {
+              e.preventDefault();
+              spec.set(track.id, i, clamp(spec.get(track.id, i) + (e.deltaY < 0 ? spec.wheel : -spec.wheel)));
+            }, { passive: false });
+            // double-click / right-click INITIALISE this step's parameter
+            pc.addEventListener('dblclick', function () { spec.set(track.id, i, spec.reset); });
+            pc.addEventListener('contextmenu', function (e) { e.preventDefault(); spec.set(track.id, i, spec.reset); });
+          })(i);
+          cells.push(pc);
+          wrap.appendChild(pc);
+        }
+        lane.appendChild(wrap);
+        adv.appendChild(lane);
+        laneSetters[spec.kind] = setDisplay;
+        laneEls[spec.kind] = { lane: lane, label: labTxt };
+        for (let i = 0; i < audioEngine.STEP_COUNT; i++) setDisplay(i, spec.get(track.id, i));
+      }
 
-      // Register this row's DOM so Jam events can update single cells later.
-      trackDom[track.id] = { stepCells: stepCells, setPitchDisplay: setPitchDisplay, muteBtn: mute };
+      adv.appendChild(fxPick);
+      buildLane({ kind: 'pitch', label: 'Pitch', get: audioEngine.getStepPitch, set: Jam.setStepPitch,
+                  min: -12, max: 12, unit: 1, px: 6, wheel: 1, reset: 0, round: true, unitLabel: ' st',
+                  fmt: function (v) { return v === 0 ? '0' : (v > 0 ? '+' + v : '' + v); }, nz: function (v) { return v !== 0; } });
+      buildLane({ kind: 'vel', label: 'Vel', get: audioEngine.getStepVel, set: Jam.setStepVel,
+                  min: 0, max: 1, unit: 0.01, px: 1.5, wheel: 0.05, reset: 1, round: false, unitLabel: '%',
+                  fmt: function (v) { return String(Math.round(v * 100)); }, nz: function (v) { return v < 0.995; } });
+      buildLane({ kind: 'len', label: 'Gate', get: audioEngine.getStepLen, set: Jam.setStepLen,
+                  min: 1, max: 16, unit: 1, px: 8, wheel: 1, reset: 1, round: true, unitLabel: '',
+                  fmt: function (v) { return String(v); }, nz: function (v) { return v > 1; } });
+                  
+      fxOrder.forEach(function (k) {
+        buildLane({ kind: 'fx_' + k, label: 'FX · ' + FX_META[k].label, 
+                    get: function(tid, i) { return audioEngine.getStepFx(tid, k, i); }, 
+                    set: function(tid, i, v) { Jam.setStepFx(tid, k, i, v); },
+                    min: 0, max: 1, unit: 0.01, px: 1.5, wheel: 0.05, reset: 0, round: false, unitLabel: '%',
+                    fmt: function (v) { return String(Math.round(v * 100)); }, nz: function (v) { return v > 0.005; } });
+        laneEls['fx_' + k].lane.classList.add('fx-lane');
+        laneEls['fx_' + k].lane.style.setProperty('--fx-col', FX_META[k].color);
+        laneEls['fx_' + k].lane.style.display = 'none'; // hidden by default
+      });
+      
+      block.appendChild(adv);
+
+      // Repaint the FX lane in the chosen effect's colour + name it, and light the
+      // matching picker button — so you always know which effect the FX lane rides.
+      function applyFxVisual(t) {
+        curFxType = t;
+        Object.keys(fxBtns).forEach(function (k) { 
+          fxBtns[k].classList.toggle('active', k === t); 
+          if (laneEls['fx_' + k]) {
+            laneEls['fx_' + k].lane.style.display = (k === t) ? 'flex' : 'none';
+          }
+        });
+      }
+      applyFxVisual(curFxType);
+
+      // Register this row's DOM so single-cell Jam events can update it in place.
+      trackDom[track.id] = {
+        stepCells: stepCells, muteBtn: mute,
+        setPitchDisplay: function (i, p) { if (laneSetters.pitch) laneSetters.pitch(i, p); },
+        setLane: function (kind, i, v) { if (laneSetters[kind]) laneSetters[kind](i, v); }
+      };
 
       container.appendChild(block);
     });
@@ -1570,8 +1916,63 @@ const ui = (function () {
 
     // Clear all steps across every track (re-renders via the 'pattern' event).
     document.getElementById('clear-button').addEventListener('click', function () {
-      Jam.clearAll();
+      if (confirm('Are you sure you want to clear the sequencer?')) {
+        Jam.clearAll();
+      }
     });
+
+    // Flip layout: rotate individual modules (panels) so they can be viewed in landscape while scrolling physically up/down
+    let currentRotation = 0;
+    const deck = document.querySelector('.deck');
+    
+    const rotObserver = new ResizeObserver(entries => {
+      const rot = parseInt(document.body.getAttribute('data-rotation') || '0', 10);
+      const isLandscape = rot === 90 || rot === 270;
+      for (let entry of entries) {
+        const panel = entry.target;
+        const wrapper = panel.closest('.panel-rot-wrapper');
+        if (!wrapper) continue;
+        if (isLandscape) {
+          wrapper.style.width = panel.offsetHeight + 'px';
+          wrapper.style.height = panel.offsetWidth + 'px';
+        } else {
+          wrapper.style.width = '';
+          wrapper.style.height = '';
+        }
+      }
+    });
+    document.querySelectorAll('.panel').forEach(p => rotObserver.observe(p));
+
+    document.getElementById('flip-button').addEventListener('click', function () {
+      let currentRotation = parseInt(document.body.getAttribute('data-rotation') || '0', 10);
+      currentRotation = (currentRotation + 90) % 360;
+      document.body.setAttribute('data-rotation', currentRotation);
+      
+      const rotLayer = document.getElementById('rot-layer');
+      if (rotLayer) {
+        rotLayer.setAttribute('data-rotation', currentRotation);
+      }
+      
+      const isLandscape = currentRotation === 90 || currentRotation === 270;
+      if (isLandscape) {
+        deck.classList.add('deck-flip');
+      } else {
+        deck.classList.remove('deck-flip');
+      }
+      
+      Jam.triggerResize();
+    });
+
+    // Side Drawer logic
+    const drawer = document.getElementById('side-drawer');
+    const hamburgerBtn = document.getElementById('hamburger-button');
+    const closeDrawerBtn = document.getElementById('close-drawer');
+    if (hamburgerBtn && drawer) {
+      hamburgerBtn.addEventListener('click', () => drawer.classList.add('open'));
+    }
+    if (closeDrawerBtn && drawer) {
+      closeDrawerBtn.addEventListener('click', () => drawer.classList.remove('open'));
+    }
 
     // EXPORT (the Roland "record" button): capture one bar to a file.
     const exportBtn = document.getElementById('export-button');
@@ -1597,6 +1998,65 @@ const ui = (function () {
 
   // ---- top bar: tempo panel, guide, segment digits ----------------------------
 
+  // State tracking for slot animations
+  let lastBpm = 120, lastSwing = 0, lastKey = 0;
+  const slotTimers = {};
+
+  function updateSlot(elId, newHtml, isIncreasing) {
+    const el = document.getElementById(elId);
+    if (!el || el.getAttribute('data-val') === newHtml) return;
+    el.setAttribute('data-val', newHtml);
+    
+    // If an animation is already running, just seamlessly update the incoming value!
+    if (el.children.length === 2) {
+      el.lastElementChild.innerHTML = newHtml;
+      return;
+    }
+    
+    if (slotTimers[elId]) {
+      clearTimeout(slotTimers[elId]);
+      slotTimers[elId] = null;
+    }
+    
+    // First setup
+    if (!el.firstElementChild || !el.firstElementChild.classList.contains('slot-wrap')) {
+      el.innerHTML = `<div class="slot-wrap" style="display:inline-flex; width:100%; justify-content:center;">${newHtml}</div>`;
+      el.style.position = 'relative';
+      el.style.overflow = 'hidden';
+      return;
+    }
+    
+    const oldWrap = el.firstElementChild;
+    const newWrap = document.createElement('div');
+    newWrap.className = 'slot-wrap';
+    newWrap.style.display = 'inline-flex';
+    newWrap.style.justifyContent = 'center';
+    newWrap.innerHTML = newHtml;
+    
+    newWrap.style.position = 'absolute';
+    newWrap.style.left = '0';
+    newWrap.style.width = '100%';
+    newWrap.style.top = isIncreasing ? '100%' : '-100%';
+    
+    el.appendChild(newWrap);
+    
+    void el.offsetWidth; // force reflow
+    
+    const easing = 'cubic-bezier(0.34, 1.56, 0.64, 1)'; // Satisfying bounce
+    oldWrap.style.transition = `transform 0.35s ${easing}`;
+    newWrap.style.transition = `top 0.35s ${easing}`;
+    
+    oldWrap.style.transform = isIncreasing ? 'translateY(-100%)' : 'translateY(100%)';
+    newWrap.style.top = '0';
+    
+    slotTimers[elId] = setTimeout(() => {
+      slotTimers[elId] = null;
+      if (oldWrap.parentNode) oldWrap.parentNode.removeChild(oldWrap);
+      newWrap.style.position = 'relative';
+      newWrap.style.top = 'auto';
+    }, 350);
+  }
+
   // Repaint every tempo readout (top-bar chip + panel chips) from the engine,
   // and retime the metronome. Called on every bpm/swing/key event.
   function refreshTempoDisplays() {
@@ -1605,12 +2065,19 @@ const ui = (function () {
     const key = audioEngine.getKeyTranspose();
 
     // LCD segment faces, exactly like the reference ("125" reads as "|25").
-    document.getElementById('bpm-value').innerHTML = SEG(bpm, 13);
-    document.getElementById('bpm-value-big').innerHTML = SEG(bpm, 22);
-    document.getElementById('swing-value').innerHTML =
-      SEG((swing > 0 ? '+' : '') + swing, 18);
-    document.getElementById('key-value').innerHTML =
-      SEG(NOTES_SEG[((key % 12) + 12) % 12], 18);
+    const bpmHtml = SEG(bpm, 13);
+    const bpmBigHtml = SEG(bpm, 22);
+    const swingHtml = SEG((swing > 0 ? '+' : '') + swing, 18);
+    const keyHtml = SEG(NOTES_SEG[((key % 12) + 12) % 12], 18);
+
+    updateSlot('bpm-value', bpmHtml, bpm >= lastBpm);
+    updateSlot('bpm-value-big', bpmBigHtml, bpm >= lastBpm);
+    updateSlot('swing-value', swingHtml, swing >= lastSwing);
+    updateSlot('key-value', keyHtml, key >= lastKey);
+
+    lastBpm = bpm;
+    lastSwing = swing;
+    lastKey = key;
 
     // Drive the beat-pulse timing on the panel.
     const panel = document.getElementById('tempo-panel');
@@ -1621,7 +2088,7 @@ const ui = (function () {
 
   // Vertical drag-to-adjust for the tempo chips (with wheel support). A press
   // that never moves counts as a tap and fires onTap instead.
-  function attachDragValue(el, pxPerStep, get, apply, onTap) {
+  function attachDragValue(el, pxPerStep, get, apply, onTap, resetVal) {
     if (!el) return; // element may not exist in every layout
     el.addEventListener('pointerdown', function (e) {
       e.preventDefault();
@@ -1646,6 +2113,8 @@ const ui = (function () {
       e.preventDefault();
       apply(get() + (e.deltaY < 0 ? 1 : -1));
     }, { passive: false });
+    // Double-click initialises the value back to its default.
+    if (resetVal != null) el.addEventListener('dblclick', function () { apply(resetVal); });
   }
 
   function setupTopBar() {
@@ -1656,16 +2125,23 @@ const ui = (function () {
 
     // Only one popover at a time.
     function toggle(panel) {
+      if (!panel) return;
       const wasOpen = panel.classList.contains('open');
       [tempoPanel, guidePanel, jamPanel, profilePanel].forEach(function (p) {
-        p.classList.remove('open');
+        if (p) p.classList.remove('open');
       });
       if (!wasOpen) panel.classList.add('open');
     }
 
-    document.getElementById('tempo-button').addEventListener('click', function () { toggle(tempoPanel); });
-    document.getElementById('guide-button').addEventListener('click', function () { toggle(guidePanel); });
-    document.getElementById('menu-button').addEventListener('click', function () { toggle(profilePanel); });
+    const tempoBtn = document.getElementById('tempo-button');
+    const guideBtn = document.getElementById('guide-button');
+    const menuBtn = document.getElementById('menu-button');
+    const jamBtn = document.getElementById('jam-button');
+
+    if (tempoBtn) tempoBtn.addEventListener('click', function () { toggle(tempoPanel); });
+    if (guideBtn) guideBtn.addEventListener('click', function () { toggle(guidePanel); });
+    if (menuBtn) menuBtn.addEventListener('click', function () { toggle(profilePanel); });
+    if (jamBtn) jamBtn.addEventListener('click', function () { toggle(jamPanel); });
 
     document.querySelectorAll('.guide-num[data-seg]').forEach(function (el) {
       el.textContent = el.getAttribute('data-seg');
@@ -1676,18 +2152,18 @@ const ui = (function () {
     function getBpm() { return audioEngine.getBpm(); }
     function setBpm(v) { Jam.setBpm(v); }
     attachDragValue(document.getElementById('bpm-chip'), 4, getBpm, setBpm,
-      function () { toggle(tempoPanel); });
-    attachDragValue(document.getElementById('chip-bpm'), 4, getBpm, setBpm);
-    attachDragValue(document.getElementById('metro-plate'), 3, getBpm, setBpm);
-    attachDragValue(document.getElementById('knurl-plate'), 7, getBpm, setBpm);
+      function () { toggle(tempoPanel); }, 120);
+    attachDragValue(document.getElementById('chip-bpm'), 4, getBpm, setBpm, null, 120);
+    attachDragValue(document.getElementById('metro-plate'), 3, getBpm, setBpm, null, 120);
+    attachDragValue(document.getElementById('knurl-plate'), 7, getBpm, setBpm, null, 120);
 
-    // SWING (0..80, percent) and KEY (−12..+12 semitones).
+    // SWING (0..80, percent) and KEY (−12..+12 semitones). Double-click resets.
     attachDragValue(document.getElementById('chip-swing'), 5,
       function () { return Math.round(audioEngine.getSwing() * 100); },
-      function (v) { Jam.setSwing(Math.max(0, Math.min(80, v)) / 100); });
+      function (v) { Jam.setSwing(Math.max(0, Math.min(80, v)) / 100); }, null, 0);
     attachDragValue(document.getElementById('chip-key'), 14,
       function () { return audioEngine.getKeyTranspose(); },
-      function (v) { Jam.setKey(v); });
+      function (v) { Jam.setKey(v); }, null, 0);
 
     refreshTempoDisplays();
   }

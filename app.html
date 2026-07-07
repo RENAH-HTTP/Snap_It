@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#F1EEE5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="manifest.json" />
   <title>Snap It</title>
@@ -51,7 +52,7 @@
       --hair:      rgba(23,23,26,.9);    /* crisp grid hairlines  */
       --hair-soft: rgba(23,23,26,.16);   /* soft borders          */
 
-      --step: 42px; --step-gap: 4px; --seq-label-w: 150px;
+      --step: 52px; --step-gap: 4px; --seq-label-w: 150px;
       --safe-b: env(safe-area-inset-bottom, 0px);
     }
 
@@ -81,32 +82,20 @@
     /* ---------------------------------------------------------------- */
     .topbar {
       position: sticky; top: 0; z-index: 50;
-      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
       min-height: 60px; padding: 10px 16px;
       background: var(--frame); box-shadow: inset 0 -1px 0 rgba(20,20,20,.14);
     }
-    /* logo lockup — the Snap It eye mark + wordmark */
     .app-logo {
-      display: inline-flex; align-items: center; gap: 9px; margin-right: 8px;
+      display: inline-flex; align-items: center; gap: 9px;
       font-size: 18px; font-weight: 900; letter-spacing: -.03em; color: var(--ink);
       text-decoration: none;
     }
     .app-logo .mark { width: 32px; height: 32px; display: block; flex-shrink: 0; }
     .app-logo .pd { color: var(--orange); }
-    /* on phones the wordmark crowds the bar — show just the eye icon */
-    @media (max-width: 620px) { .app-word { display: none; } .app-logo { margin: 0; } }
+    @media (max-width: 620px) { .app-word { display: none; } }
 
     .transport, .top-right { display: flex; align-items: center; gap: 8px; }
-    .top-right { margin-left: auto; }
-
-    /* phone: brand on its own centred row, controls centred below it */
-    @media (max-width: 620px) {
-      .topbar { justify-content: center; row-gap: 10px; padding: 10px 12px; }
-      .app-logo { flex-basis: 100%; justify-content: center; margin: 0; }
-      .transport { order: 1; }
-      .bpm-chip { order: 2; }
-      .top-right { order: 3; margin-left: 0; }
-    }
 
     .tb {
       width: 38px; height: 38px; border-radius: 9px;
@@ -114,7 +103,6 @@
       transition: filter .12s, background .12s;
     }
     .tb:hover { filter: brightness(.94); }
-
     .tb-rec { background: var(--orange); }
     .tb-rec .rec-dot { width: 13px; height: 13px; border-radius: 50%; background: #fff; }
     .tb-rec.recording { animation: recblink .5s ease-in-out infinite alternate; }
@@ -125,71 +113,167 @@
     .tb-play.playing svg path { fill: var(--green); }
     .tb-stop svg rect { fill: var(--ink); }
 
-    .tb-clear {
-      width: auto; height: 30px; padding: 0 10px; border-radius: 8px;
-      background: var(--cell); border: 1px solid var(--hair-soft);
-      font-size: 11px; font-weight: 800; letter-spacing: .08em;
+    .tb-jam-pill {
+      background: #A03BFF; color: white;
+      font-size: 14px; font-weight: 800; padding: 0 16px; height: 38px;
+      border-radius: 19px; display: flex; align-items: center; gap: 8px;
+      letter-spacing: 0.01em; cursor: pointer;
     }
+    .jam-dot-pill {
+      width: 8px; height: 8px; border-radius: 50%; background: #00FF88;
+      box-shadow: 0 0 6px rgba(0,255,136,0.6); display: none;
+    }
+    .tb-jam-pill.active .jam-dot-pill { display: block; }
+    
+    .tb-hamburger {
+      width: 40px; height: 40px; border-radius: 12px; background: #000;
+      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
+      cursor: pointer;
+    }
+    .tb-hamburger .hl { width: 18px; height: 2px; background: #fff; border-radius: 1px; }
+
+    .topbar-icon {
+      transition: transform 0.3s ease-in-out;
+    }
+    body[data-rotation="90"] .topbar-icon { transform: rotate(90deg); }
+    body[data-rotation="180"] .topbar-icon { transform: rotate(180deg); }
+    body[data-rotation="270"] .topbar-icon { transform: rotate(270deg); }
+
+    /* ================= SIDE DRAWER ================= */
+    .side-drawer {
+      position: fixed; top: 0; right: -320px; width: 280px; height: 100dvh;
+      background: var(--frame); border-left: 2.5px solid var(--ink);
+      z-index: 100; transition: right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      display: flex; flex-direction: column;
+    }
+    .side-drawer.open { right: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); }
+    .drawer-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 20px; border-bottom: 2.5px solid var(--ink);
+    }
+    .drawer-header h3 { font-weight: 900; font-size: 18px; margin: 0; letter-spacing: -0.02em; }
+    .drawer-close { font-size: 32px; line-height: 1; font-weight: 300; padding: 0; cursor: pointer; }
+    .drawer-content { padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    
+    .drawer-btn {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; background: var(--cell); border: 1.5px solid var(--hair-soft);
+      border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer;
+      color: var(--ink);
+    }
+    .danger-btn { color: var(--orange); border-color: rgba(230, 126, 34, 0.3); }
 
     .bpm-chip {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 3px; height: 44px; padding: 0 14px; border-radius: 10px;
-      background: var(--cell); border: 1px solid var(--hair-soft);
-      cursor: ns-resize; touch-action: none;
+      gap: 3px; height: 60px; border-radius: 12px;
+      background: var(--cell); border: 1.5px solid var(--hair-soft);
+      cursor: ns-resize; touch-action: none; width: 100%;
     }
-    .bpm-chip .bc-cap { font-size: 8px; font-weight: 800; letter-spacing: .18em; color: var(--label); }
-
-    .tb-jam { background: var(--green); position: relative; }
-    .tb-jam svg { display: block; }
-    .jam-dot {
-      position: absolute; top: -3px; right: -3px; width: 11px; height: 11px;
-      border-radius: 50%; background: transparent; border: 2px solid var(--paper);
-      transition: background .15s;
-    }
-    .jam-dot.on { background: #35C77E; }
-    .jam-dot.silent { background: var(--mustard); }
-
-    .tb-guide { width: auto; padding: 0 6px; font-size: 12px; font-weight: 800;
-                letter-spacing: .06em; color: var(--navy); }
-    .tb-gear { background: #D3CFC6; border-radius: 50%; }
-    .tb-gear svg { display: block; }
+    .bpm-chip .bc-cap { font-size: 10px; font-weight: 800; letter-spacing: .18em; color: var(--label); }
 
     /* ---------------------------------------------------------------- */
     /* PANEL DECK — responsive grid                                     */
     /* ---------------------------------------------------------------- */
     .deck {
-      display: grid; gap: 16px; padding: 16px;
+      display: grid; gap: 16px; padding: 16px 16px calc(28px + var(--safe-b));
       width: 100%; margin: 0 auto;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-areas: "video" "keypad" "sound" "mixer" "tempo" "seq" "xy";
+      grid-template-areas: "video" "mixer" "tempo" "keypad" "sound" "scope" "seq" "xy";
     }
-    @media (min-width: 700px) and (max-width: 1019px) {
+    /* Desktop (mouse) — two adaptive columns that grow with the viewport.
+       Touch devices (phone / tablet) stay single-column at every width so the
+       flip feature stays usable — see the (pointer: fine) gate below. */
+    @media (min-width: 720px) and (hover: hover) and (pointer: fine) {
       .deck {
+        max-width: 1040px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-areas:
           "video  mixer"
           "keypad sound"
           "tempo  xy"
+          "scope  scope"
           "seq    seq";
       }
     }
-    @media (min-width: 1020px) {
+    /* Desktop (mouse) — three columns spread across the screen, sized to fit */
+    @media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
       .deck {
-        max-width: 1780px;
+        max-width: 1720px;
         grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
         grid-template-areas:
           "video  mixer  tempo"
           "keypad sound  xy"
+          "scope  scope  scope"
           "seq    seq    seq";
       }
+    }
+    .panel-rot-wrapper {
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; min-width: 0;
+    }
+    /* The wrapper is the real grid item, so grid placement lives here */
+    .panel-rot-wrapper:has(> .p-video)  { grid-area: video; }
+    .panel-rot-wrapper:has(> .p-mixer)  { grid-area: mixer; }
+    .panel-rot-wrapper:has(> .p-tempo)  { grid-area: tempo; }
+    .panel-rot-wrapper:has(> .p-keypad) { grid-area: keypad; }
+    .panel-rot-wrapper:has(> .p-sound)  { grid-area: sound; }
+    .panel-rot-wrapper:has(> .p-scope)  { grid-area: scope; }
+    .panel-rot-wrapper:has(> .p-seq)    { grid-area: seq; }
+    .panel-rot-wrapper:has(> .p-xy)     { grid-area: xy; }
+    .panel {
+      transition: transform 0.3s ease-in-out;
+      width: 100%;
+    }
+    body[data-rotation="0"] .panel,
+    body[data-rotation="180"] .panel {
+      width: 100%;
+    }
+    body[data-rotation="90"] .panel,
+    body[data-rotation="270"] .panel {
+      width: calc(100dvh - 90px);
+      height: calc(100dvw - 32px);
+    }
+    body[data-rotation="90"] .panel {
+      transform: rotate(90deg);
+    }
+    body[data-rotation="180"] .panel {
+      transform: rotate(180deg);
+    }
+    body[data-rotation="270"] .panel {
+      transform: rotate(270deg);
+    }
+    /* Desktop (mouse) grid mode: the flip feature is single-column only, so hide
+       it here and let panels stretch to fill their grid cell (no ragged gaps).
+       Touch phones/tablets keep the flip button and the rotate transforms. */
+    @media (min-width: 720px) and (hover: hover) and (pointer: fine) {
+      #flip-button { display: none !important; }
+      .panel-rot-wrapper { align-items: stretch; }
+      body[data-rotation="90"] .panel,
+      body[data-rotation="180"] .panel,
+      body[data-rotation="270"] .panel {
+        transform: none !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      /* Live Signal is a slim master-output monitor, not a hero panel */
+      .p-scope { height: auto; }
+      .p-scope .live-scope { flex: 0 0 auto; height: 96px; min-height: 0; }
     }
     .p-video  { grid-area: video; }
     .p-mixer  { grid-area: mixer; }
     .p-tempo  { grid-area: tempo; }
     .p-keypad { grid-area: keypad; }
     .p-sound  { grid-area: sound; }
+    .p-scope  { grid-area: scope; }
     .p-seq    { grid-area: seq; }
     .p-xy     { grid-area: xy; }
+
+    /* Live-signal strip — the master waveform as it plays (Visualizer module). */
+    .p-scope { padding: 12px 16px 14px; display: flex; flex-direction: column; height: 100%; }
+    .live-scope {
+      width: 100%; flex: 1; min-height: 104px; display: block; border-radius: 12px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+    }
 
     /* panels match the landing page: thick ink border + a hard offset shadow */
     .panel {
@@ -207,15 +291,70 @@
       content: ''; width: 9px; height: 9px; border-radius: 50%;
       background: var(--orange); flex-shrink: 0;
     }
-
+    .pc-actions { margin-left: auto; display: flex; gap: 8px; }
+    .pc-btn {
+      background: none; border: none; cursor: pointer; color: var(--ink);
+      padding: 4px; border-radius: 6px; display: flex; align-items: center;
+      transition: background 0.15s;
+    }
+    .pc-btn:hover { background: rgba(0,0,0,0.08); }
+    
+    /* Fullscreen Module Mode */
+    .panel-rot-wrapper.module-fullscreen {
+      position: fixed; top: 0; left: 0;
+      width: 100dvw !important; height: 100dvh !important;
+      z-index: 1000; background: var(--panel);
+      padding: 0; box-sizing: border-box; border-radius: 0;
+    }
+    .panel-rot-wrapper.module-fullscreen .panel {
+      height: 100% !important; border-radius: 0; box-shadow: none; border: none;
+    }
+    
+    body[data-rotation="0"] .panel-rot-wrapper.module-fullscreen .panel,
+    body[data-rotation="180"] .panel-rot-wrapper.module-fullscreen .panel {
+      width: 100% !important;
+    }
+    body[data-rotation="90"] .panel-rot-wrapper.module-fullscreen .panel,
+    body[data-rotation="270"] .panel-rot-wrapper.module-fullscreen .panel {
+      width: 100dvh !important;
+      height: 100dvw !important;
+    }
+    @media (min-width: 700px) {
+      body[data-rotation="90"] .panel-rot-wrapper.module-fullscreen .panel,
+      body[data-rotation="270"] .panel-rot-wrapper.module-fullscreen .panel {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+    
     /* ---------------------------------------------------------------- */
-    /* VIDEO — the scanner is an EYE: the feed lives in the iris,       */
+    /* VIDEO - the scanner is an EYE: the feed lives in the iris,       */
     /* halftone-printed, and the lids blink and squint while it looks.  */
     /* ---------------------------------------------------------------- */
     .eye {
       position: relative; width: 100%; aspect-ratio: 10 / 7;
       border-radius: 50% / 50%; overflow: hidden;
       background: #F6F2E6; box-shadow: inset 0 0 0 2px rgba(23,23,27,.28);
+    }
+    
+    .panel-rot-wrapper.module-fullscreen .eye {
+      aspect-ratio: auto; border-radius: 12px;
+      flex: 1;
+    }
+    .panel-rot-wrapper.module-fullscreen .eye-ball {
+      width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0;
+    }
+    .panel-rot-wrapper.module-fullscreen .eye-ball::after {
+      display: none;
+    }
+    
+    .cam-disabled-msg {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: rgba(241, 238, 229, 0.9);
+      z-index: 10; font-weight: 800; font-size: 16px; color: var(--ink); gap: 12px;
+      backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .cam-disabled-msg.show { opacity: 1; pointer-events: auto; }
     }
     .eye-ball {
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -311,10 +450,14 @@
     }
     .mix-area {
       position: absolute; inset: 0; display: flex; align-items: flex-end;
-      justify-content: center; gap: 10px; padding: 20px 20px 0;
+      justify-content: flex-start; gap: 10px; padding: 20px 18px 6px;
+      overflow-x: auto; overflow-y: hidden;
     }
+    /* centre the channels until they overflow, then let the row scroll */
+    .mix-slot:first-of-type { margin-left: auto; }
+    .mix-slot:last-of-type { margin-right: auto; }
     .mix-slot {
-      position: relative; width: 54px; max-width: 20%; height: 100%;
+      position: relative; flex: 0 0 54px; width: 54px; height: 100%;
       display: flex; flex-direction: column; justify-content: flex-end;
       cursor: ns-resize; touch-action: none;
       border-left: 2px solid var(--ink); border-right: 2px solid var(--ink);
@@ -343,6 +486,23 @@
       align-self: center; margin: auto; font-size: 10px; font-weight: 700;
       letter-spacing: .16em; text-transform: uppercase; color: var(--label);
     }
+    /* Channel identity + an obvious mute, so 16 thin channels stay readable. */
+    .mix-num {
+      position: absolute; top: 4px; left: 0; right: 0; text-align: center;
+      font-size: 9px; font-weight: 800; color: rgba(23,23,26,.5); pointer-events: none;
+    }
+    .mix-strip .ms-ico { line-height: 0; }
+    .mix-strip .ms-ico svg { width: 19px; height: 19px; fill: #fff; stroke: #fff; }
+    .mix-slot.muted .mix-strip .ms-ico svg { fill: var(--ink); stroke: var(--ink); }
+    .mix-mute {
+      flex-shrink: 0; height: 24px; margin-top: 3px; border-radius: 6px;
+      font-size: 10px; font-weight: 900; letter-spacing: .04em;
+      background: var(--cell); border: 2px solid var(--ink); color: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s, color .12s, filter .12s;
+    }
+    .mix-mute:hover { filter: brightness(.95); }
+    .mix-slot.muted .mix-mute { background: var(--red); border-color: var(--red); color: #fff; }
 
     /* ---------------------------------------------------------------- */
     /* TEMPO — three bold, ink-bordered tiles you drag (our own design)  */
@@ -412,8 +572,13 @@
     .pad.selected { box-shadow: inset 0 0 0 2.5px var(--type-color, var(--navy)); }
     .pad.pop { animation: padpop .26s ease-out; }
     @keyframes padpop { 35% { transform: scale(.88); } }
-    .pad-ico { line-height: 0; }
-    .pad-ico svg { width: 44%; height: auto; max-width: 46px; aspect-ratio: 1; }
+    /* Size the icon box to the pad itself (a % on the SVG alone collapses back to
+       its intrinsic 20px because .pad-ico is content-sized). Now it's the hero. */
+    .pad-ico {
+      line-height: 0; width: 66%; height: 66%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pad-ico svg { width: 100%; height: 100%; }
     .pad-num { position: absolute; right: 7px; bottom: 6px; opacity: .55; }
     .pad-hatch {   /* undiscovered sound: the reference's striped circle */
       width: 56%; aspect-ratio: 1; border-radius: 50%;
@@ -423,14 +588,14 @@
       position: absolute; top: 8px; left: 8px; width: 9px; height: 9px;
       border-radius: 50%; background: var(--orange);
     }
-    .pad-swap {   /* per-pad "swap the sample" corner button — always visible */
-      position: absolute; top: 5px; right: 5px; width: 30px; height: 30px;
+    .pad-swap {   /* per-pad "swap the sample" corner button — subtle until wanted */
+      position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
       display: flex; align-items: center; justify-content: center;
-      border-radius: 9px; font-size: 17px; color: var(--ink);
-      background: var(--cell); border: 2px solid var(--ink);
-      opacity: .85; transition: opacity .12s, background .12s, transform .1s; cursor: pointer;
+      border-radius: 7px; font-size: 12px; color: var(--ink);
+      background: var(--cell); border: 1.5px solid var(--hair-soft);
+      opacity: .32; transition: opacity .12s, background .12s, transform .1s; cursor: pointer;
     }
-    .pad:hover .pad-swap { opacity: 1; }
+    .pad:hover .pad-swap, .pad.selected .pad-swap { opacity: 1; border-color: var(--ink); }
     .pad-swap:hover { background: var(--orange); color: #fff; }
     .pad-swap:active { transform: scale(.9); }
     .pad-add-ico {
@@ -473,16 +638,6 @@
       background: var(--ink); color: var(--paper);
       display: flex; align-items: center; justify-content: center;
     }
-    /* Adding a sound to the sequencer is a headline action — big, obvious. */
-    .ed-add {
-      width: 100%; height: 44px; margin-top: 2px; border-radius: 12px;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      background: var(--orange); color: #fff; border: 2.5px solid var(--ink);
-      font-size: 14px; font-weight: 900; letter-spacing: .02em;
-      box-shadow: 0 3px 0 rgba(23,23,26,.4); transition: transform .1s, filter .12s;
-    }
-    .ed-add:hover { filter: brightness(1.05); }
-    .ed-add:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(23,23,26,.4); }
     .ed-play:hover { filter: brightness(1.1); }
     .ed-wave {
       flex: 1; width: 100%; min-height: 110px; border-radius: 10px;
@@ -529,17 +684,52 @@
       .lib-editor { flex-direction: column; }
       .ed-side { max-width: none; }
     }
+    body[data-rotation="90"] .ed-main,
+    body[data-rotation="270"] .ed-main {
+      flex: 1 !important;
+    }
+    body[data-rotation="90"] .ed-side,
+    body[data-rotation="270"] .ed-side {
+      flex: 1.3 !important;
+    }
 
     /* ---------------------------------------------------------------- */
     /* SEQUENCER — 16 steps per track + pitch lane                      */
     /* ---------------------------------------------------------------- */
-    .seq-scroll { overflow-x: auto; padding-bottom: 4px; }
-    .seq-ruler { display: flex; margin-bottom: 8px; min-width: max-content; }
-    .ruler-spacer {
-      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
-      background: var(--panel); z-index: 2;
+    .p-seq { display: flex; flex-direction: column; }
+    .seq-scroll { 
+      overflow-x: auto; overflow-y: auto; 
+      max-height: 65vh; padding-bottom: 4px; 
+      flex: 1;
     }
-    .ruler-steps { display: flex; gap: var(--step-gap); }
+    body[data-rotation="90"] .seq-scroll,
+    body[data-rotation="270"] .seq-scroll,
+    .panel-rot-wrapper.module-fullscreen .seq-scroll {
+      max-height: none !important;
+    }
+    .seq-header {
+      position: sticky; top: 0; z-index: 12;
+      background: var(--panel); border-bottom: 1px solid rgba(23,23,27,.08);
+      display: flex; flex-direction: column;
+    }
+    .pat-len-wrap {
+      display: flex; padding-top: 8px; padding-left: 10px;
+      position: sticky; left: 0; width: max-content;
+    }
+    .seq-ruler { 
+      display: flex; min-width: max-content; 
+    }
+    .ruler-spacer-ico {
+      flex-shrink: 0; width: 48px; position: sticky; left: 0;
+      background: var(--panel); z-index: 13;
+      border-right: 1px solid rgba(23,23,27,.08);
+    }
+    .ruler-spacer-txt {
+      flex-shrink: 0; width: 102px;
+      background: var(--panel); z-index: 12;
+      border-right: 1px solid rgba(23,23,27,.08);
+    }
+    .ruler-steps { display: flex; gap: var(--step-gap); align-items: flex-end; padding-bottom: 4px; }
     .ruler-steps span {
       width: var(--step); text-align: center; font-size: 9px;
       font-weight: 700; color: var(--label);
@@ -551,16 +741,27 @@
       min-width: max-content;
     }
     .track-block:last-child { border-bottom: 0; }
-    .track-row { display: flex; align-items: center; }
-    .track-label {
-      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
-      background: var(--panel); z-index: 2;
-      display: flex; align-items: center; gap: 8px; padding-right: 10px;
-      font-size: 12px; font-weight: 700;
+    .track-row { display: flex; align-items: stretch; }
+    .tl-ico-wrap {
+      flex-shrink: 0; width: 48px; position: sticky; left: 0;
+      background: var(--panel); z-index: 10;
+      display: flex; align-items: center; padding-left: 10px;
+      border-right: 1px solid rgba(23,23,27,.08);
     }
-    .tl-ico { line-height: 0; flex-shrink: 0; }
-    .tl-ico svg { width: 18px; height: 18px; }
-    .tl-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tl-txt-wrap {
+      flex-shrink: 0; width: 102px;
+      background: var(--panel);
+      display: flex; align-items: center; padding-right: 10px; padding-left: 8px;
+      font-size: 12px; font-weight: 700;
+      border-right: 1px solid rgba(23,23,27,.08);
+    }
+    .track-steps { display: flex; gap: var(--step-gap); align-items: center; }
+    .tl-ico {
+      flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tl-ico svg { width: 18px; height: 18px; fill: #fff; stroke: #fff; }
+    .tl-nm { font-size: 12.5px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .track-steps { display: flex; gap: var(--step-gap); }
     .step {
@@ -571,7 +772,7 @@
     .step.beat-start:not(:first-child) { margin-left: 9px; }
     .step:hover { border-color: var(--ink); }
     .step .shape {
-      position: absolute; inset: 5px;
+      position: absolute; inset: 4px;
       clip-path: var(--shape, circle(50% at 50% 50%));
       background: transparent; transition: background .08s;
     }
@@ -583,6 +784,7 @@
       color: var(--ink); opacity: 0; pointer-events: none;
     }
     .step.tuned .step-pitch { opacity: .85; }
+    .step.step-hidden { display: none; }
 
     .track-mute {
       margin-left: 12px; height: 26px; padding: 0 10px; border-radius: 7px;
@@ -596,14 +798,24 @@
     }
     .track-remove:hover { color: var(--red); }
 
-    .pitch-lane { display: flex; align-items: center; margin-top: 5px; }
-    .pitch-lane-label {
-      flex-shrink: 0; width: var(--seq-label-w); position: sticky; left: 0;
-      background: var(--panel); z-index: 2;
+    .pitch-lane { display: flex; align-items: stretch; }
+    .pitch-lane-ico {
+      flex-shrink: 0; width: 48px; position: sticky; left: 0;
+      background: var(--panel); z-index: 10;
       font-size: 9px; font-weight: 700; letter-spacing: .16em;
       text-transform: uppercase; color: var(--label);
+      display: flex; align-items: center; padding-top: 5px; padding-left: 10px;
+      border-right: 1px solid rgba(23,23,27,.08);
     }
-    .pitch-cells { display: flex; gap: var(--step-gap); }
+    .pitch-lane-txt {
+      flex-shrink: 0; width: 102px;
+      background: var(--panel);
+      font-size: 9px; font-weight: 700; letter-spacing: .16em;
+      text-transform: uppercase; color: var(--label);
+      display: flex; align-items: center; padding-top: 5px; padding-left: 8px;
+      border-right: 1px solid rgba(23,23,27,.08);
+    }
+    .pitch-cells { display: flex; gap: var(--step-gap); align-items: center; padding-top: 5px; }
     .pitch-cell {
       width: var(--step); height: 16px; border-radius: 4px;
       background: rgba(23,23,27,.06); cursor: ns-resize; touch-action: none;
@@ -613,12 +825,53 @@
     .pitch-cell.beat-start:not(:first-child) { margin-left: 9px; }
     .pitch-cell:hover { background: rgba(23,23,27,.12); }
     .pitch-cell.nz { background: var(--cell); border: 1px solid var(--hair-soft); color: var(--ink); }
+    .pitch-cell.pitch-cell-hidden { display: none; }
+
+    /* ---- advanced per-step lanes (pitch / vel / gate / fx) behind an expander -- */
+    .track-adv-toggle {
+      margin-left: 6px; width: 26px; height: 26px; border-radius: 7px;
+      background: var(--cell); border: 1px solid var(--hair-soft);
+      font-size: 15px; font-weight: 800; color: var(--label); line-height: 1;
+      transition: transform .18s, color .12s, background .12s;
+    }
+    .track-adv { display: none; padding: 4px 0 2px; }
+    .track-block.adv-open .track-adv { display: block; }
+    .track-block.adv-open { background: rgba(124,92,255,.04); border-radius: 10px; }
+    .track-block.adv-open .adv-indicator { transform: rotate(180deg); }
+    .adv-fxpick { }
+    .adv-fxpick .pitch-lane-label { padding-bottom: 2px; }
+    .adv-fxbtns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding-top: 5px; padding-bottom: 2px; }
+    .adv-fxbtn {
+      height: 22px; padding: 0 10px; border-radius: 6px; font-size: 10px; font-weight: 800;
+      background: var(--cell); border: 1.5px solid var(--hair-soft); color: var(--ink);
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    .adv-fxbtn:hover { border-color: var(--ink); }
+    .adv-fxbtn.active { background: var(--fxc, var(--violet)); border-color: var(--fxc, var(--violet)); color: #fff; }
+    /* the FX lane repaints in the active effect's colour, so its steps read as
+       "that effect" — not just a bare number */
+    .pitch-lane.fx-lane .pitch-lane-label { color: var(--fx-col, var(--violet)); }
+    .pitch-lane.fx-lane .pitch-cell.nz {
+      background: var(--fx-col, var(--violet)); border-color: var(--fx-col, var(--violet)); color: #fff;
+    }
 
     .empty {
       padding: 26px 8px; text-align: center;
       font-size: 11px; font-weight: 700; letter-spacing: .12em;
       text-transform: uppercase; color: var(--label);
     }
+
+    .pat-len-bar {
+      display: flex; gap: 4px;
+    }
+    .pat-len-btn {
+      height: 22px; padding: 0 8px; border-radius: 6px; font-size: 10px; font-weight: 800;
+      background: var(--cell); border: 1.5px solid var(--hair-soft); color: var(--ink);
+      transition: background .12s, color .12s, border-color .12s;
+      white-space: nowrap;
+    }
+    .pat-len-btn:hover { border-color: var(--ink); }
+    .pat-len-btn.active { background: var(--navy); border-color: var(--navy); color: #fff; }
 
     /* ---------------------------------------------------------------- */
     /* XY — morph pad: five effect zones, ink-outlined, with a knob puck */
@@ -650,6 +903,19 @@
       margin-left: -1.5px; border-radius: 2px; background: var(--ink);
     }
     .xy-cursor.off { opacity: .4; }
+    /* Explicit "no effect" control — the pad is a morph field with no obvious dry
+       spot, so this is the answer to "where's neutral?". Lit while the rack is dry. */
+    .xy-bypass {
+      position: absolute; left: 8px; bottom: 8px; z-index: 5;
+      height: 26px; padding: 0 11px; border-radius: 8px;
+      display: flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 900; letter-spacing: .06em;
+      background: var(--cell); color: var(--ink); border: 2px solid var(--ink);
+      box-shadow: 0 2px 0 rgba(23,23,26,.4); transition: filter .12s, transform .1s;
+    }
+    .xy-bypass:hover { filter: brightness(1.04); }
+    .xy-bypass:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(23,23,26,.4); }
+    .xy-bypass.on { background: var(--ink); color: var(--paper); }
 
     /* ---------------------------------------------------------------- */
     /* TR BAR — track selector footer                                   */
@@ -670,7 +936,7 @@
     .tr-btn:first-child { margin-left: auto; }
     .tr-btn.fx { margin-right: auto; }
     .tr-btn {
-      flex: 0 0 52px; height: 42px; border-radius: 8px; background: var(--tr-idle);
+      flex: 0 0 60px; height: 50px; border-radius: 8px; background: var(--tr-idle);
       color: #fff; display: flex; align-items: center; justify-content: center;
       transition: background .15s, filter .12s;
     }
@@ -736,7 +1002,21 @@
     }
     #pp-logout { margin-top: 8px; }
 
-    .tb-coll { background: var(--cell); border: 1px solid var(--hair-soft); }
+    /* Collection is the reward loop — make it the loudest thing in the bar. */
+    .tb-coll {
+      width: auto; height: 42px; padding: 0 15px; gap: 8px;
+      background: var(--orange); border: 2.5px solid var(--ink);
+      border-radius: 11px; box-shadow: 0 3px 0 var(--ink);
+      transition: transform .1s, filter .12s;
+    }
+    .tb-coll .coll-label {
+      font-size: 12.5px; font-weight: 900; letter-spacing: .06em; color: #fff;
+    }
+    .tb-coll:hover { filter: brightness(1.06); }
+    .tb-coll:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+    /* On tiny phones the wordmark is already hidden — keep the label, drop nothing
+       else; the button is short enough. Shrink the label a touch instead. */
+    @media (max-width: 620px) { .tb-coll { height: 40px; padding: 0 12px; } .tb-coll .coll-label { font-size: 11.5px; } }
 
     /* ---------------------------------------------------------------- */
     /* COLLECTION — the pokedex of sounds                               */
@@ -791,6 +1071,11 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .col-item.locked .ci-name { color: var(--label); letter-spacing: .2em; }
+    .ci-clue {
+      margin-top: 2px; font-size: 10px; font-weight: 800; letter-spacing: .01em;
+      color: var(--orange); max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .ci-kind {
       font-size: 9px; font-weight: 700; letter-spacing: .14em;
       text-transform: uppercase; color: var(--label);
@@ -833,8 +1118,14 @@
     #picker-remove { margin-top: 10px; }
 
     /* sequencer: focused track (TR buttons) + who added it              */
-    .track-block.tr-focus { box-shadow: inset 3px 0 0 var(--navy); }
-    .tl-txt { display: flex; flex-direction: column; min-width: 0; }
+    .track-block.tr-focus { background: rgba(47,93,224,.03); }
+    .track-block.tr-focus .tl-ico-wrap::before, 
+    .track-block.tr-focus .pitch-lane-ico::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+      background: var(--navy); z-index: 11;
+    }
+    
+    .tl-txt { display: flex; flex-direction: column; min-width: 0; margin-left: 4px; }
     .tl-by {
       font-size: 8px; font-weight: 800; letter-spacing: .12em;
       text-transform: uppercase; color: var(--label);
@@ -966,7 +1257,6 @@
 </head>
 <body>
 
-  <!-- ================= TOP BAR ================= -->
   <header class="topbar">
     <a class="app-logo" href="index.html" title="Back to the site">
       <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
@@ -980,68 +1270,62 @@
     </a>
 
     <div class="transport">
-      <button id="export-button" class="tb tb-rec" title="Record loop to file">
+      <button id="export-button" class="tb tb-rec topbar-icon" title="Record loop to file">
         <span class="rec-dot"></span>
       </button>
-      <button id="play-button" class="tb tb-play" title="Play">
+      <button id="play-button" class="tb tb-play topbar-icon" title="Play">
         <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 4l14 8-14 8z"/></svg>
       </button>
-      <button id="stop-button" class="tb tb-stop" title="Stop">
+      <button id="stop-button" class="tb tb-stop topbar-icon" title="Stop">
         <svg viewBox="0 0 24 24" width="18" height="18"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>
       </button>
-      <button id="clear-button" class="tb-clear" title="Clear all steps">CLR</button>
     </div>
-
-    <button id="bpm-chip" class="bpm-chip" title="Drag up/down to change BPM">
-      <span class="bc-cap">BPM</span>
-      <span id="bpm-value" class="seg-row">120</span>
-    </button>
 
     <!-- hidden tempo button kept for JS compatibility -->
     <button id="tempo-button" hidden></button>
 
     <div class="top-right">
-      <button id="collection-button" class="tb tb-coll" title="Your collection">
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#17171B"
-             stroke-width="2" stroke-linejoin="round">
-          <rect x="8" y="3.5" width="12.5" height="15.5" rx="2"/>
-          <path d="M4 7.5v11a2 2 0 002 2h10.5"/>
-        </svg>
+      <button id="jam-button" class="tb-jam-pill" title="Jam session">
+        Jam Session
+        <span id="jam-dot" class="jam-dot-pill"></span>
       </button>
-      <button id="jam-button" class="tb tb-jam" title="Jam session">
-        <span id="jam-dot" class="jam-dot"></span>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff"
-             stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
-          <path d="M3.5 13.5v-4h4v4zM10 9.5h3a1.5 1.5 0 011.5 1.5v3.5"/>
-          <path d="M14.5 14.5l-2-2.6M14.5 14.5l2.5-2.6"/>
-        </svg>
-      </button>
-      <button id="guide-button" class="tb tb-guide" title="Guide">GUIDE</button>
-      <button id="menu-button" class="tb tb-gear" title="Settings">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="#17171B">
-          <circle cx="12" cy="12" r="3.4"/>
-          <g>
-            <rect x="10.9" y="3.4" width="2.2" height="5"/>
-            <rect x="10.9" y="15.6" width="2.2" height="5"/>
-            <rect x="3.4" y="10.9" width="5" height="2.2"/>
-            <rect x="15.6" y="10.9" width="5" height="2.2"/>
-            <rect x="10.9" y="3.4" width="2.2" height="5" transform="rotate(45 12 12)"/>
-            <rect x="10.9" y="15.6" width="2.2" height="5" transform="rotate(45 12 12)"/>
-            <rect x="3.4" y="10.9" width="5" height="2.2" transform="rotate(45 12 12)"/>
-            <rect x="15.6" y="10.9" width="5" height="2.2" transform="rotate(45 12 12)"/>
-          </g>
-        </svg>
+      
+      <button id="hamburger-button" class="tb-hamburger topbar-icon" title="Menu">
+        <div class="hl"></div>
+        <div class="hl"></div>
+        <div class="hl"></div>
       </button>
     </div>
   </header>
+
 
   <!-- ================= PANEL DECK ================= -->
   <main class="deck">
 
     <!-- VIDEO: the object scanner — an eye that watches the world -->
-    <section class="panel p-video" id="card-video">
-      <h2 class="panel-cap">The Scanner</h2>
+    <div class="panel-rot-wrapper"><section class="panel p-video" id="card-video">
+      <h2 class="panel-cap">
+        The Scanner
+        <div class="pc-actions">
+          <button id="cam-toggle-btn" class="pc-btn" title="Toggle Camera">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          <button id="cam-fullscreen-btn" class="pc-btn" title="Fullscreen Scanner">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+          </button>
+        </div>
+      </h2>
       <div class="eye" id="camera-eye">
+        <div id="cam-disabled-overlay" class="cam-disabled-msg">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/>
+          </svg>
+          Camera Disabled
+        </div>
         <div class="eye-ball">
           <video id="camera-video" autoplay muted playsinline></video>
           <div class="cam-halftone"></div>
@@ -1057,10 +1341,10 @@
           <option>Default camera</option>
         </select>
       </div>
-    </section>
+    </section></div>
 
     <!-- MIXER: crayon bars, one per sequencer track -->
-    <section class="panel p-mixer" id="card-mixer">
+    <div class="panel-rot-wrapper"><section class="panel p-mixer" id="card-mixer">
       <h2 class="panel-cap">The Mix</h2>
       <div class="mixer-plate">
         <div class="mix-ticks left"></div>
@@ -1069,10 +1353,10 @@
         <canvas id="scope-canvas" class="mix-scope" width="620" height="110"></canvas>
         <div id="mixer-area" class="mix-area"></div>
       </div>
-    </section>
+    </section></div>
 
     <!-- TEMPO: three drag tiles — BPM (with a beat-pulse), SWING, KEY -->
-    <section class="panel p-tempo" id="card-tempo">
+    <div class="panel-rot-wrapper"><section class="panel p-tempo" id="card-tempo">
       <h2 class="panel-cap">Tempo &amp; Key</h2>
       <div id="tempo-panel" class="tempo-grid">
         <button class="tempo-chip chip-bpm" id="chip-bpm" title="Drag up/down to change BPM">
@@ -1091,45 +1375,61 @@
           <span class="tc-hint">drag ↕</span>
         </button>
       </div>
-    </section>
+    </section></div>
 
     <!-- KEYPAD: the sample library -->
-    <section class="panel p-keypad" id="card-keypad">
+    <div class="panel-rot-wrapper"><section class="panel p-keypad" id="card-keypad">
       <h2 class="panel-cap">Your Kit</h2>
       <div id="library-grid" class="op-keypad"></div>
       <div class="keypad-foot">
         <button class="kp-mode" id="kp-mode" title="View your collection">&#10697; COLLECTION</button>
         <span class="kp-hint">SCAN OBJECTS TO UNLOCK</span>
       </div>
-    </section>
+    </section></div>
 
     <!-- SOUND: waveform + ADSR + tune for the selected pad -->
-    <section class="panel p-sound" id="card-sound">
+    <div class="panel-rot-wrapper"><section class="panel p-sound" id="card-sound">
       <h2 class="panel-cap">Shape the Sound</h2>
       <div id="lib-editor" class="lib-editor">
         <div class="ed-empty">TAP A PAD TO SHAPE ITS SOUND</div>
       </div>
-    </section>
+    </section></div>
+
+    <!-- LIVE SIGNAL: the master output waveform, drawn as it plays -->
+    <div class="panel-rot-wrapper"><section class="panel p-scope" id="card-scope">
+      <h2 class="panel-cap">Live Signal</h2>
+      <canvas id="live-scope" class="live-scope"></canvas>
+    </section></div>
 
     <!-- SEQUENCER: 16 steps per track -->
-    <section class="panel p-seq" id="card-seq">
-      <h2 class="panel-cap">The Sequencer</h2>
+    <div class="panel-rot-wrapper"><section class="panel p-seq" id="card-seq">
+      <h2 class="panel-cap">
+        The Sequencer
+        <div class="pc-actions">
+          <button id="seq-fullscreen-btn" class="pc-btn" title="Fullscreen Sequencer">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+          </button>
+        </div>
+      </h2>
       <div class="seq-scroll">
-        <div class="seq-ruler">
-          <div class="ruler-spacer"></div>
-          <div class="ruler-steps">
-            <span>1</span><span>2</span><span>3</span><span>4</span>
-            <span>5</span><span>6</span><span>7</span><span>8</span>
-            <span>9</span><span>10</span><span>11</span><span>12</span>
-            <span>13</span><span>14</span><span>15</span><span>16</span>
+        <div class="seq-header">
+          <div class="pat-len-wrap">
+            <div class="pat-len-bar" id="pat-len-bar"></div>
+          </div>
+          <div class="seq-ruler">
+            <div class="ruler-spacer-ico"></div>
+            <div class="ruler-spacer-txt"></div>
+            <div class="ruler-steps"></div>
           </div>
         </div>
         <div id="sequencer-tracks"></div>
       </div>
-    </section>
+    </section></div>
 
     <!-- XY: textured color field -->
-    <section class="panel p-xy" id="card-xy">
+    <div class="panel-rot-wrapper"><section class="panel p-xy" id="card-xy">
       <h2 class="panel-cap">FX Pad</h2>
       <div class="xy-pad" id="xy-pad"
            title="Drag to morph between effects — each zone is one effect. Double-click to bypass.">
@@ -1139,17 +1439,60 @@
         <div class="xy-block xy-pink"><span class="xy-lab">VERB</span></div>
         <div class="xy-block xy-green"><span class="xy-lab">ECHO</span></div>
         <div class="xy-cursor off"></div>
+        <button id="xy-bypass" class="xy-bypass on" title="No effect — dry signal">&#9211; DRY</button>
       </div>
-    </section>
+    </section></div>
 
   </main>
 
-  <!-- ================= TR BAR ================= -->
-  <footer class="trbar">
-    <span class="bb-label">TR</span>
-    <!-- one button per sequencer track, rendered by ui.js -->
-    <div class="bb-tracks" id="track-selectors"></div>
-  </footer>
+  <!-- ================= ROTATION LAYER FOR POPOVERS ================= -->
+  <div id="rot-layer" data-rotation="0">
+
+  <!-- ================= SIDE DRAWER ================= -->
+  <nav id="side-drawer" class="side-drawer">
+    <div class="drawer-header">
+      <h3>Controls</h3>
+      <button id="close-drawer" class="drawer-close">&times;</button>
+    </div>
+    <div class="drawer-content">
+      <button id="bpm-chip" class="bpm-chip" title="Drag up/down to change BPM">
+        <span class="bc-cap">BPM</span>
+        <span id="bpm-value" class="seg-row">120</span>
+      </button>
+      
+      <button id="flip-button" class="drawer-btn" title="Rotate Layout">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Rotate Layout
+      </button>
+
+      <button id="collection-button" class="drawer-btn" title="Your collection">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+          <rect x="8" y="3.5" width="12.5" height="15.5" rx="2"/>
+          <path d="M4 7.5v11a2 2 0 002 2h10.5"/>
+        </svg>
+        Collection
+      </button>
+      
+      <button id="guide-button" class="drawer-btn" title="Guide">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        Guide
+      </button>
+      
+      <button id="menu-button" class="drawer-btn" title="Settings">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3.4"/>
+          <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536-7.071l-1.414 1.414M7.879 17.536l-1.414 1.414m12.071 0l-1.414-1.414M7.879 7.879L6.464 6.464"/>
+        </svg>
+        Settings
+      </button>
+      
+      <button id="clear-button" class="drawer-btn danger-btn" title="Clear all steps">
+        Clear Sequencer
+      </button>
+    </div>
+  </nav>
 
   <!-- Jam session popover -->
   <div id="jam-panel" class="jam-panel">
@@ -1185,7 +1528,7 @@
     </div>
     <div class="guide-row">
       <div class="guide-num" data-seg="3"></div>
-      <div><h4>Sequence</h4><p>Hit + SEQ on a sound, then toggle its 16 steps. Drag the pitch lane up or down to tune single steps.</p></div>
+      <div><h4>Sequence</h4><p>Every sound in your kit is already a row in the sequencer — just toggle its 16 steps. Drag the pitch lane up or down to tune single steps.</p></div>
     </div>
     <div class="guide-row">
       <div class="guide-num" data-seg="4"></div>
@@ -1284,6 +1627,8 @@
     <canvas id="side-scope" width="352" height="120"></canvas>
   </div>
 
+  </div> <!-- /rot-layer -->
+
   <!-- Third-party Libraries -->
   <script src="node_modules/tone/build/Tone.js"></script>
   <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
@@ -1291,6 +1636,7 @@
 
   <!-- App modules. Plain scripts that attach to window; load order matters. -->
   <script src="src/cameraStub.js"></script>
+  <script src="src/visualizer.js"></script>
   <script src="src/vision/vision.js"></script>
   <script src="src/data/profile.js"></script>
   <script src="src/library.js"></script>

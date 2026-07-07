@@ -22,13 +22,29 @@
 // -----------------------------------------------------------------------------
 
 const audioEngine = (function () {
-  const STEP_COUNT = 16; // one bar of 16th notes
+  const STEP_COUNT = 16; // max steps a pattern can hold (arrays are this long)
+
+  // The five per-track insert effects the FX lanes can automate, each with its
+  // own per-step amount (0..1). "Select Drive" edits the drive lane; "select
+  // Filter" edits the filter lane — independently, per step.
+  const FX_NAMES = ['filter', 'drive', 'crush', 'delay', 'reverb'];
+  function emptyStepFx() {
+    const o = {};
+    FX_NAMES.forEach(function (e) { o[e] = new Array(STEP_COUNT).fill(0); });
+    return o;
+  }
+  function cloneStepFx(sf) {
+    const o = {};
+    FX_NAMES.forEach(function (e) { o[e] = ((sf && sf[e]) || []).slice(); });
+    return o;
+  }
 
   const players = {};       // objectType -> Tone.Player
   const envs = {};          // objectType -> Tone.AmplitudeEnvelope (real ADSR)
   const settings = {};      // objectType -> { attack, decay, sustain, release, cents }
   const tracks = [];        // array of track objects (see header)
   let nextTrackId = 1;      // simple incrementing id
+  let patternLen = 16;      // how many steps actually loop (4 / 8 / 12 / 16)
   let sequence = null;      // the Tone.Sequence driving the loop
   let stepCallback = null;  // optional UI callback fired on every step
   let audioStarted = false; // has the AudioContext been unlocked by a gesture?
@@ -117,21 +133,15 @@ const audioEngine = (function () {
   // handing us the current step index (0-15). For each step we trigger every
   // un-muted track that has that step switched on.
   function buildSequence() {
+    // Rebuildable: changing the pattern length disposes the old loop and makes a
+    // new one over the new step count.
+    if (sequence) { try { sequence.stop(); sequence.dispose(); } catch (e) {} sequence = null; }
     const stepIndices = [];
-    for (let i = 0; i < STEP_COUNT; i++) stepIndices.push(i);
+    for (let i = 0; i < patternLen; i++) stepIndices.push(i);
 
     sequence = new Tone.Sequence(
       function (time, step) {
-        tracks.forEach(function (track) {
-          if (track.muted) return;
-          if (!track.steps[step]) return;
-          // Each step can carry its own pitch offset (semitones -> cents) and a
-          // gate length in steps (how long the note is held — a "note hold").
-          const extraCents = (track.stepPitch[step] || 0) * 100;
-          const steps16 = Tone.Time('16n').toSeconds();
-          const gateSec = Math.max(1, track.stepLen[step] || 1) * steps16;
-          triggerSample(track.objectType, time, extraCents, track.volume, track.snd, gateSec);
-        });
+        tracks.forEach(function (track) { triggerTrack(track, step, time); });
 
         // Tell the UI which step is playing, synced to the visual frame.
         if (stepCallback && typeof Tone.getDraw === 'function') {
@@ -235,6 +245,115 @@ const audioEngine = (function () {
     if (gateSec) { try { player.stop(t + hold + 0.02); } catch (e) {} }
   }
 
+  // ---- per-track voice + insert FX (the "pro" per-track FX sends) -------------
+  // Each sequencer track gets its OWN envelope and a small insert-FX chain, tapped
+  // off the shared sample player and feeding the master rack:
+  //     player ─┬─ (shared env, for preview)
+  //             └─ track.env → filter → drive → crush → delay → master rack → out
+  // It rests fully transparent (filter wide open, effects dry), so a track sounds
+  // exactly as before until its FX lane is drawn. Reverb stays on the master XY
+  // pad — one reverb per track would be needlessly heavy. Mystery ("_default")
+  // tracks fall back to the shared path (no per-track FX).
+
+  function buildTrackAudio(track) {
+    const key = library.resolveKey(track.objectType);
+    if (key === '_default') return;
+    const player = players[key];
+    if (!player) return;
+    const env = new Tone.AmplitudeEnvelope({ attack: 0.005, decay: 0.2, sustain: 1, release: 0.3 });
+    const fx = {
+      filter: new Tone.Filter(18000, 'lowpass'),
+      drive:  new Tone.Distortion(0.7),
+      crush:  new Tone.BitCrusher(4),
+      delay:  new Tone.FeedbackDelay('8n', 0.35),
+      // JCReverb is algorithmic (no async impulse), so one-per-track stays cheap.
+      reverb: new Tone.JCReverb(0.72),
+    };
+    fx.drive.wet.value = 0;
+    fx.crush.wet.value = 0;
+    fx.delay.wet.value = 0;
+    fx.reverb.wet.value = 0;
+    env.chain(fx.filter, fx.drive, fx.crush, fx.delay, fx.reverb, fxChain.filter);
+    player.connect(env); // fan-out; the shared env stays wired for preview
+    track.env = env;
+    track.fx = fx;
+  }
+
+  function disposeTrackAudio(track) {
+    const key = library.resolveKey(track.objectType);
+    try { if (track.env && players[key]) players[key].disconnect(track.env); } catch (e) {}
+    try { if (track.env) track.env.dispose(); } catch (e) {}
+    if (track.fx) Object.keys(track.fx).forEach(function (k) { try { track.fx[k].dispose(); } catch (e) {} });
+    track.env = null;
+    track.fx = null;
+  }
+
+  // Apply the track's chosen effects per step at their weights (0..1); everything else stays dry.
+  function applyAllTrackFx(track, step) {
+    const fx = track.fx;
+    if (!fx) return;
+    const sf = track.stepFx || emptyStepFx();
+    
+    // Fallbacks to 0 if a lane isn't found
+    const wDrive = sf.drive && sf.drive[step] != null ? sf.drive[step] : 0;
+    const wCrush = sf.crush && sf.crush[step] != null ? sf.crush[step] : 0;
+    const wDelay = sf.delay && sf.delay[step] != null ? sf.delay[step] : 0;
+    const wReverb = sf.reverb && sf.reverb[step] != null ? sf.reverb[step] : 0;
+    const wFilter = sf.filter && sf.filter[step] != null ? sf.filter[step] : 0;
+
+    fx.drive.wet.rampTo(wDrive * 0.9, 0.02);
+    fx.crush.wet.rampTo(wCrush * 0.85, 0.02);
+    fx.delay.wet.rampTo(wDelay * 0.6, 0.02);
+    fx.reverb.wet.rampTo(wReverb * 0.7, 0.02);
+    fx.filter.frequency.rampTo(18000 * Math.pow(300 / 18000, wFilter), 0.02);
+  }
+
+  // Fire one track's step: its own ADSR + per-step pitch, velocity, gate, and FX.
+  function triggerTrack(track, step, time) {
+    if (track.muted || !track.steps[step]) return;
+
+    const extraCents = (track.stepPitch[step] || 0) * 100;
+    const steps16 = Tone.Time('16n').toSeconds();
+    const gateSec = Math.max(1, track.stepLen[step] || 1) * steps16;
+    const vel = (track.stepVel && track.stepVel[step] != null) ? track.stepVel[step] : 1;
+    const gain = (track.volume == null ? 0.8 : track.volume) * vel;
+
+    const key = library.resolveKey(track.objectType);
+    if (key === '_default' || !track.env) {
+      // Mystery / no per-track voice: shared path (no per-track FX).
+      triggerSample(track.objectType, time, extraCents, gain, track.snd, gateSec);
+      return;
+    }
+
+    const player = players[key];
+    if (!player || !player.loaded) return;
+
+    const eff = track.snd || settings[key] || {};
+    const env = track.env;
+    env.attack  = Math.max(0.001, +eff.attack  || 0);
+    env.decay   = Math.max(0.001, +eff.decay   || 0);
+    env.sustain = Math.max(0, Math.min(1, eff.sustain == null ? 1 : +eff.sustain));
+    env.release = Math.max(0.001, +eff.release || 0);
+
+    applyAllTrackFx(track, step);
+
+    const cents = (eff.cents || 0) + extraCents + keyTranspose * 100;
+    player.playbackRate = centsToRate(cents);
+    player.volume.value = 0; // gain rides the envelope velocity below
+
+    const sampleDur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
+    const hold = gateSec ? Math.max(0.02, gateSec) : sampleDur;
+    // Envelope velocity carries the per-track * per-step level, so two tracks on
+    // one sample keep independent volume without fighting over the shared player.
+    env.triggerAttackRelease(hold, time, Math.max(0.0001, gain));
+
+    const wantLoop = !!gateSec && gateSec > sampleDur * 1.05;
+    try { player.loop = wantLoop; } catch (e) {}
+    try { player.stop(time); } catch (e) {}
+    try { player.start(time); } catch (e) {}
+    if (gateSec) { try { player.stop(time + hold + 0.02); } catch (e) {} }
+  }
+
   // ---- public actions --------------------------------------------------------
 
   // Play a single sample once (used by the library preview button). `snd` is
@@ -271,10 +390,13 @@ const audioEngine = (function () {
       snd: snd ? Object.assign({}, snd) : Object.assign({}, settings[key]),
       steps: new Array(STEP_COUNT).fill(false),
       stepPitch: new Array(STEP_COUNT).fill(0), // per-step pitch offset, semitones
+      stepVel: new Array(STEP_COUNT).fill(1),   // per-step velocity, 0..1
       stepLen: new Array(STEP_COUNT).fill(1),   // per-step gate length, in steps
+      stepFx: emptyStepFx(),                     // per-effect, per-step FX amount 0..1
       muted: false,
       volume: 0.8, // mixer level 0..1 (0.8 ≈ -2 dB leaves headroom by default)
     };
+    buildTrackAudio(track); // its own envelope + insert-FX chain
     tracks.push(track);
     console.log('[audioEngine] added track', track.id, 'for', key);
     return track.id;
@@ -283,6 +405,7 @@ const audioEngine = (function () {
   function removeTrack(trackId) {
     const index = tracks.findIndex(function (t) { return t.id === trackId; });
     if (index !== -1) {
+      disposeTrackAudio(tracks[index]);
       tracks.splice(index, 1);
       console.log('[audioEngine] removed track', trackId);
     }
@@ -362,6 +485,23 @@ const audioEngine = (function () {
     return Math.round(Tone.getTransport().bpm.value);
   }
 
+  // Set the number of steps that actually loop. Clamped to 4, 8, 12, or 16.
+  function setPatternLen(len) {
+    const clamped = Math.max(4, Math.min(16, Math.round(len) || 16));
+    // Usually these are nice multiples of 4. We'll round down to nearest 4.
+    const l = clamped >= 16 ? 16 : (clamped >= 12 ? 12 : (clamped >= 8 ? 8 : 4));
+    if (patternLen !== l) {
+      patternLen = l;
+      buildSequence();
+      console.log('[audioEngine] pattern length =', patternLen);
+    }
+    return patternLen;
+  }
+
+  function getPatternLen() {
+    return patternLen;
+  }
+
   function isPlaying() {
     return Tone.getTransport().state === 'started';
   }
@@ -429,6 +569,35 @@ const audioEngine = (function () {
     });
   }
 
+  // ---- kit <-> sequencer linkage --------------------------------------------
+  // The keypad "kit" and the sequencer are one and the same: every pad owns a
+  // track (linked by srcPad). These let the UI find one from the other so a pad
+  // add/remove/swap keeps its row in sync, without leaking the local pad id into
+  // the serialised snapshot.
+
+  function getPadForTrack(trackId) {
+    const t = findTrack(trackId);
+    return t ? (t.srcPad || null) : null;
+  }
+
+  function getTrackIdForPad(srcPad) {
+    if (!srcPad) return null;
+    const t = tracks.find(function (x) { return x.srcPad === srcPad; });
+    return t ? t.id : null;
+  }
+
+  // Swap the sample a track plays WITHOUT dropping its programmed steps, so
+  // swapping a pad's sound keeps that pad's rhythm in the sequencer.
+  function setTrackSample(trackId, objectType, displayName, snd) {
+    const t = findTrack(trackId);
+    if (!t) return;
+    const key = library.resolveKey(objectType);
+    const info = library.getSampleInfo(key);
+    t.objectType = key;
+    t.displayName = displayName || (info && info.displayName) || key;
+    t.snd = snd ? Object.assign({}, snd) : Object.assign({}, settings[key]);
+  }
+
   // Tune the sample, clamped to ±4800 cents (±48 semitones).
   function setSampleCents(objectType, cents) {
     const key = library.resolveKey(objectType);
@@ -450,6 +619,37 @@ const audioEngine = (function () {
   function getStepPitch(trackId, stepIndex) {
     const track = findTrack(trackId);
     return track ? (track.stepPitch[stepIndex] || 0) : 0;
+  }
+
+  // Per-step velocity (how hard the hit lands). Clamped 0..1.
+  function setStepVel(trackId, stepIndex, v) {
+    const track = findTrack(trackId);
+    if (!track) return 1;
+    if (!track.stepVel) track.stepVel = new Array(STEP_COUNT).fill(1);
+    const clamped = Math.max(0, Math.min(1, +v));
+    track.stepVel[stepIndex] = clamped;
+    return clamped;
+  }
+
+  function getStepVel(trackId, stepIndex) {
+    const track = findTrack(trackId);
+    return track && track.stepVel && track.stepVel[stepIndex] != null ? track.stepVel[stepIndex] : 1;
+  }
+
+  // Per-step FX automation amount for a specific effect lane (0 = dry, 1 = full).
+  function setStepFx(trackId, fxName, stepIndex, v) {
+    const track = findTrack(trackId);
+    if (!track) return 0;
+    if (!track.stepFx) track.stepFx = emptyStepFx();
+    if (!track.stepFx[fxName]) track.stepFx[fxName] = new Array(STEP_COUNT).fill(0);
+    const clamped = Math.max(0, Math.min(1, +v || 0));
+    track.stepFx[fxName][stepIndex] = clamped;
+    return clamped;
+  }
+
+  function getStepFx(trackId, fxName, stepIndex) {
+    const track = findTrack(trackId);
+    return track && track.stepFx && track.stepFx[fxName] && track.stepFx[fxName][stepIndex] != null ? track.stepFx[fxName][stepIndex] : 0;
   }
 
   // Per-step gate length (how many steps the note is held). Clamped 1..STEP_COUNT.
@@ -550,7 +750,10 @@ const audioEngine = (function () {
         snd: t.snd ? Object.assign({}, t.snd) : null,
         steps: t.steps.slice(),
         stepPitch: t.stepPitch.slice(),
+        stepVel: (t.stepVel || []).slice(),
         stepLen: t.stepLen.slice(),
+        stepLen: t.stepLen.slice(),
+        stepFx: cloneStepFx(t.stepFx),
         muted: t.muted,
         volume: t.volume == null ? 0.8 : t.volume,
       };
@@ -563,6 +766,7 @@ const audioEngine = (function () {
       bpm: getBpm(),
       swing: getSwing(),
       key: keyTranspose,
+      patternLen: patternLen,
       nextTrackId: nextTrackId,
     };
   }
@@ -573,15 +777,28 @@ const audioEngine = (function () {
   function applyPatternSnapshot(snap) {
     if (!snap || !Array.isArray(snap.tracks)) return;
 
+    // Tear down the old tracks' audio nodes before replacing the list.
+    tracks.forEach(function (t) { disposeTrackAudio(t); });
     tracks.length = 0;
     snap.tracks.forEach(function (t) {
       const steps = new Array(STEP_COUNT).fill(false);
       const pitch = new Array(STEP_COUNT).fill(0);
+      const vels = new Array(STEP_COUNT).fill(1);
       const lens = new Array(STEP_COUNT).fill(1);
       (t.steps || []).forEach(function (v, i) { if (i < STEP_COUNT) steps[i] = !!v; });
       (t.stepPitch || []).forEach(function (v, i) { if (i < STEP_COUNT) pitch[i] = v || 0; });
+      (t.stepVel || []).forEach(function (v, i) { if (i < STEP_COUNT) vels[i] = v == null ? 1 : Math.max(0, Math.min(1, v)); });
       (t.stepLen || []).forEach(function (v, i) { if (i < STEP_COUNT) lens[i] = Math.max(1, v || 1); });
-      tracks.push({
+      
+      // Backward compat: if old snapshot gave us a flat array for stepFx, map it to the filter lane.
+      let fxs = emptyStepFx();
+      if (Array.isArray(t.stepFx)) {
+        t.stepFx.forEach(function (v, i) { if (i < STEP_COUNT) fxs.filter[i] = Math.max(0, Math.min(1, v || 0)); });
+      } else if (t.stepFx) {
+        fxs = cloneStepFx(t.stepFx);
+      }
+
+      const track = {
         id: t.id,
         objectType: t.objectType,
         displayName: t.displayName || t.objectType,
@@ -589,10 +806,14 @@ const audioEngine = (function () {
         snd: t.snd ? Object.assign({}, t.snd) : Object.assign({}, settings[library.resolveKey(t.objectType)]),
         steps: steps,
         stepPitch: pitch,
+        stepVel: vels,
         stepLen: lens,
+        stepFx: fxs,
         muted: !!t.muted,
         volume: t.volume == null ? 0.8 : Math.max(0, Math.min(1, +t.volume || 0)),
-      });
+      };
+      buildTrackAudio(track);
+      tracks.push(track);
     });
 
     // Keep id generation ahead of anything we've seen so a future host-side add
@@ -604,6 +825,7 @@ const audioEngine = (function () {
     if (typeof snap.bpm === 'number') setMasterBpm(snap.bpm);
     if (typeof snap.swing === 'number') setSwing(snap.swing);
     if (typeof snap.key === 'number') setKeyTranspose(snap.key);
+    if (typeof snap.patternLen === 'number') setPatternLen(snap.patternLen);
   }
 
   // EXPORT (the old record button): capture one bar of the beat to a file.
@@ -621,7 +843,9 @@ const audioEngine = (function () {
     exporting = true;
 
     recorder = new Tone.Recorder();
-    Object.keys(envs).forEach(function (key) { envs[key].connect(recorder); });
+    // Tap the tail of the master rack so we capture the whole mix — shared preview
+    // voices AND every per-track FX chain all flow through here.
+    fxChain.reverb.connect(recorder);
     recorder.start();
 
     // Make sure the loop is actually running while we capture it.
@@ -634,9 +858,7 @@ const audioEngine = (function () {
     await new Promise(function (r) { setTimeout(r, barMs + 150); });
 
     const blob = await recorder.stop();
-    Object.keys(envs).forEach(function (key) {
-      try { envs[key].disconnect(recorder); } catch (e) {}
-    });
+    try { fxChain.reverb.disconnect(recorder); } catch (e) {}
     recorder.dispose();
     recorder = null;
     if (!wasPlaying) transport.stop();
@@ -691,6 +913,8 @@ const audioEngine = (function () {
     getKeyTranspose: getKeyTranspose,
     setMasterBpm: setMasterBpm,
     getBpm: getBpm,
+    setPatternLen: setPatternLen,
+    getPatternLen: getPatternLen,
     isPlaying: isPlaying,
     unlock: unlock,
     setMasterMute: setMasterMute,
@@ -709,8 +933,15 @@ const audioEngine = (function () {
     setSampleEnv: setSampleEnv,
     setSampleCents: setSampleCents,
     updateTrackSndForPad: updateTrackSndForPad,
+    getPadForTrack: getPadForTrack,
+    getTrackIdForPad: getTrackIdForPad,
+    setTrackSample: setTrackSample,
     setStepPitch: setStepPitch,
     getStepPitch: getStepPitch,
+    setStepVel: setStepVel,
+    getStepVel: getStepVel,
+    setStepFx: setStepFx,
+    getStepFx: getStepFx,
     setStepLen: setStepLen,
     getStepLen: getStepLen,
     getStepOn: getStepOn,

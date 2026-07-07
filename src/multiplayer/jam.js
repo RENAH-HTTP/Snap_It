@@ -160,6 +160,21 @@ window.Jam = (() => {
         fire('len', a.trackId, a.i, l);
         break;
       }
+      case 'vel': {
+        const v = audioEngine.setStepVel(a.trackId, a.i, a.val);
+        fire('vel', a.trackId, a.i, v);
+        break;
+      }
+      case 'fx': {
+        const f = audioEngine.setStepFx(a.trackId, a.fxName, a.i, a.val);
+        fire('fx', a.trackId, a.fxName, a.i, f);
+        break;
+      }
+      case 'patternLen': {
+        const pl = audioEngine.setPatternLen(a.len);
+        fire('patternLen', pl);
+        break;
+      }
       case 'mute': {
         audioEngine.setTrackMute(a.trackId, a.muted);
         fire('mute', a.trackId, a.muted);
@@ -195,6 +210,8 @@ window.Jam = (() => {
       audioEngine.addTrackToSequencer(p.objectType, p.displayName, p.by, p.snd, p.srcPad);
     } else if (p.kind === 'remove') {
       audioEngine.removeTrack(p.trackId);
+    } else if (p.kind === 'swap') {
+      audioEngine.setTrackSample(p.trackId, p.objectType, p.displayName, p.snd);
     } else if (p.kind === 'clear') {
       audioEngine.clearAllSteps();
     }
@@ -299,6 +316,14 @@ window.Jam = (() => {
     dispatchAction({ kind: 'len', trackId: trackId, i: i, val: val });
   }
 
+  function setStepVel(trackId, i, val) {
+    dispatchAction({ kind: 'vel', trackId: trackId, i: i, val: val });
+  }
+
+  function setStepFx(trackId, fxName, i, val) {
+    dispatchAction({ kind: 'fx', trackId: trackId, fxName: fxName, i: i, val: val });
+  }
+
   function setMute(trackId, muted) {
     dispatchAction({ kind: 'mute', trackId: trackId, muted: muted });
   }
@@ -319,6 +344,10 @@ window.Jam = (() => {
     dispatchAction({ kind: 'key', st: st });
   }
 
+  function setPatternLen(len) {
+    dispatchAction({ kind: 'patternLen', len: len });
+  }
+
   function addTrack(objectType, displayName, snd, srcPad) {
     // Tag the track with who added it, so jam peers see it in the sequencer.
     // srcPad is a local pad id (only meaningful on this machine).
@@ -330,6 +359,15 @@ window.Jam = (() => {
 
   function removeTrack(trackId) {
     dispatchStructural({ kind: 'remove', trackId: trackId });
+  }
+
+  // Swap the sample an existing row plays (keeps its steps). Used when a pad's
+  // sound is changed in the picker — the pad and its sequencer row are one thing.
+  function swapTrack(trackId, objectType, displayName, snd) {
+    dispatchStructural({
+      kind: 'swap', trackId: trackId, objectType: objectType,
+      displayName: displayName, snd: snd || null,
+    });
   }
 
   function clearAll() {
@@ -381,13 +419,17 @@ window.Jam = (() => {
     toggleStep: toggleStep,
     setStepPitch: setStepPitch,
     setStepLen: setStepLen,
+    setStepVel: setStepVel,
+    setStepFx: setStepFx,
     setMute: setMute,
     setVolume: setVolume,
     setBpm: setBpm,
     setSwing: setSwing,
     setKey: setKey,
+    setPatternLen: setPatternLen,
     addTrack: addTrack,
     removeTrack: removeTrack,
+    swapTrack: swapTrack,
     clearAll: clearAll,
     play: play,
     stop: stop,
