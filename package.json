@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Scan physical objects to unlock drum samples, build a library, and make beats in a step sequencer.",
   "scripts": {
-    "start": "serve .",
+    "start": "node jam-server.js",
+    "jam": "node jam-server.js",
+    "serve": "serve .",
     "build": "node build.js"
   },
   "author": "SoundHunter Team",

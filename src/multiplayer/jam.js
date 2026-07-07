@@ -412,9 +412,17 @@ window.Jam = (() => {
     Network.leave();
   }
 
+  // The UI calls this after a layout change (module fullscreen / flip-rotate) so
+  // size-sensitive widgets — the scope canvases, the sequencer — recompute.
+  // Nudge the standard resize path; harmless if nothing is listening.
+  function triggerResize() {
+    try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+  }
+
   return {
     init: init,
     on: on,
+    triggerResize: triggerResize,
     // sequencer edits
     toggleStep: toggleStep,
     setStepPitch: setStepPitch,

@@ -1634,6 +1634,11 @@
   <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
   <script src="node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js"></script>
 
+  <!-- Jam networking: socket.io browser client, served by jam-server.js at
+       /socket.io/… . Absent (404, harmless) if the app is opened without that
+       server — network.js then keeps jam disabled instead of crashing. -->
+  <script src="/socket.io/socket.io.js"></script>
+
   <!-- App modules. Plain scripts that attach to window; load order matters. -->
   <script src="src/cameraStub.js"></script>
   <script src="src/visualizer.js"></script>
