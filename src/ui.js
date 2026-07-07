@@ -248,7 +248,7 @@ const ui = (function () {
   // cells (so drags keep working); 'pattern' rebuilds the whole grid.
 
   function setupJamEvents() {
-    Jam.on('pattern', function () { renderSequencer(); });
+    Jam.on('pattern', function () { renderSequencer(); updateFlipSeqWidth(); });
 
     Jam.on('step', function (trackId, i, on) {
       const dom = trackDom[trackId];
@@ -277,6 +277,7 @@ const ui = (function () {
 
     Jam.on('patternLen', function (len) {
       renderSequencer();
+      updateFlipSeqWidth();   // flipped length tracks the beat count
     });
 
     Jam.on('mute', function (trackId, muted) {
@@ -379,11 +380,18 @@ const ui = (function () {
       addrIn.disabled  = inSession;
 
       if (role === 'host') {
+        const code = Jam.getRoomCode() || '----';
         const ips = Jam.getLanIps();
-        ipsEl.textContent = ips.length
-          ? 'Friends enter: ' + ips.join('  or  ')
-          : 'No LAN address found — check WiFi.';
+        // On a LOCAL server, friends also need the address to open the app;
+        // on a published (cloud) site they're already on it — just share the code.
+        const where = ips.length
+          ? ' · on this WiFi open http://' + ips[0] + ':' + (location.port || 80) + '/app.html'
+          : '';
+        ipsEl.textContent = 'Room code: ' + code + ' — friends tap Join and enter it' + where;
         peersEl.textContent = '0 connected';
+      } else if (role === 'client') {
+        ipsEl.textContent = 'In room ' + (Jam.getRoomCode() || '') + '.';
+        peersEl.textContent = '';
       } else {
         ipsEl.textContent = '';
         peersEl.textContent = '';
@@ -1565,6 +1573,34 @@ const ui = (function () {
 
   // ---- sequencer tab ---------------------------------------------------------
 
+  // When flipped on a phone/tablet, the sequencer panel is sized to its pattern
+  // length so the whole thing scrolls in landscape — longer with more beats. The
+  // width is derived from the step count + CSS step size (constants), never from
+  // measuring a stretchable element, so it can't feed back into itself.
+  function updateFlipSeqWidth() {
+    const panel = document.querySelector('.p-seq');
+    if (!panel) return;
+    const rot = parseInt(document.body.getAttribute('data-rotation') || '0', 10);
+    if (rot !== 90 && rot !== 270) {
+      if (panel.style.width) panel.style.width = '';
+      if (panel.style.minWidth) panel.style.minWidth = '';
+      return;
+    }
+    // A flex item's default min-width:auto (min-content) would otherwise floor the
+    // panel wider than we ask; pin it so our explicit width is exact.
+    panel.style.minWidth = '0px';
+    const steps = (window.audioEngine && audioEngine.getPatternLen) ? audioEngine.getPatternLen() : 16;
+    const cs = getComputedStyle(document.documentElement);
+    const stepPx = parseFloat(cs.getPropertyValue('--step')) || 52;
+    const gapPx  = parseFloat(cs.getPropertyValue('--step-gap')) || 4;
+    const labels = 150;                                   // sticky icon(48) + name(102)
+    const groupPad = Math.floor(steps / 4) * 9;           // every-4th-step spacer
+    // Exactly as long as the beats — 4 steps is short, 16 is long. (No viewport
+    // floor: that would feed back through page height into itself.)
+    const px = (labels + steps * (stepPx + gapPx) + groupPad + 40) + 'px';
+    if (panel.style.width !== px) panel.style.width = px;
+  }
+
   function renderSequencer() {
     renderMixer(); // the crayon bars mirror the track list 1:1
 
@@ -1933,9 +1969,13 @@ const ui = (function () {
         const wrapper = panel.closest('.panel-rot-wrapper');
         if (!wrapper) continue;
         if (isLandscape) {
+          // The sequencer runs AS LONG AS its beats so the whole pattern scrolls
+          // in landscape; other modules keep their one-screenful CSS width.
+          if (panel.classList.contains('p-seq')) updateFlipSeqWidth();
           wrapper.style.width = panel.offsetHeight + 'px';
           wrapper.style.height = panel.offsetWidth + 'px';
         } else {
+          panel.style.width = '';
           wrapper.style.width = '';
           wrapper.style.height = '';
         }
@@ -1959,7 +1999,8 @@ const ui = (function () {
       } else {
         deck.classList.remove('deck-flip');
       }
-      
+
+      updateFlipSeqWidth();   // size the sequencer to its beats (or reset)
       Jam.triggerResize();
     });
 

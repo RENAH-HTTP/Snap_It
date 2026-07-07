@@ -867,33 +867,21 @@ const audioEngine = (function () {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const fileName = 'snap-it-beat-' + stamp + '.webm';
 
-    // In Electron (nodeIntegration) write straight into Downloads; in a plain
-    // browser hand the file to the download manager instead.
+    // Hand the recorded loop to the browser's download manager.
     try {
-      const fs = require('fs');
-      const path = require('path');
-      const os = require('os');
-      const buffer = Buffer.from(await blob.arrayBuffer());
-      const dest = path.join(os.homedir(), 'Downloads', fileName);
-      fs.writeFileSync(dest, buffer);
-      console.log('[audioEngine] exported beat to', dest);
-      return dest;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+      console.log('[audioEngine] exported beat as browser download:', fileName);
+      return fileName;
     } catch (err) {
-      try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-        console.log('[audioEngine] exported beat as browser download:', fileName);
-        return fileName;
-      } catch (err2) {
-        console.error('[audioEngine] export failed', err2);
-        return null;
-      }
+      console.error('[audioEngine] export failed', err);
+      return null;
     }
   }
 

@@ -1,45 +1,42 @@
 // src/multiplayer/network.js
 // -----------------------------------------------------------------------------
-// Transport layer for jam sessions (LAN, browser-friendly).
+// Transport layer for jam sessions — native WebSocket, host-anywhere.
 //
-// A browser tab can't listen for TCP connections, so hosting is done through a
-// shared relay: the machine running `jam-server.js` serves the app AND relays
-// jam messages on the same port. Both host and clients are socket.io CLIENTS of
-// that relay — the "host" is simply the peer the relay marks as the authority.
+// The app is a static site. Jam messages travel through a relay reachable at the
+// SAME origin the app was loaded from, on the path /jam:
+//   - published on Cloudflare -> wss://<site>/jam  (a Worker + Durable Object)
+//   - run locally (npm start)  -> ws://<lan-ip>:3001/jam  (jam-server.js)
+// Same browser code either way; no socket.io, nothing to bundle.
 //
-// This module stays DUMB: it moves messages and reports connection events. All
-// musical/state logic lives in jam.js, which subscribes via Network.on(...).
+// A session is a ROOM addressed by a short code. The first peer to Host claims
+// the room and becomes the authority; everyone else is a client of the relay.
 //
-// Public API (attached to window) — unchanged from the old embedded-server
-// version so jam.js/ui.js keep working:
-//   Network.host()                  -> claim the room on the relay we loaded from
-//   Network.join(address)           -> connect to a host's relay (blank = same one)
-//   Network.leave()                 -> disconnect
-//   Network.send(type, payload)     -> host: broadcast to all clients
-//                                      client: send to the host
-//   Network.on(event, cb)           -> 'message' (msg, fromId) | 'role' (role)
-//                                      'status' | 'peers' | 'peerJoined'/'peerLeft'
-//   Network.setSnapshotProvider(fn) -> host sends fn() to each client as it joins
-//   Network.role()                  -> 'offline' | 'host' | 'client'
-//   Network.peerCount()             -> connected clients (host side)
-//   Network.getLanIps()             -> LAN IPv4s the relay reported (host side)
-//   Network.clientId()              -> this client's id in the room
+// Public API (attached to window) — the shape jam.js/ui.js expect:
+//   Network.host()                 -> claim a fresh room (auto room code)
+//   Network.join(code)             -> join a room by its code
+//   Network.leave()                -> disconnect
+//   Network.send(type, payload)    -> host: to all clients / client: to host
+//   Network.on(event, cb)          -> 'message'(msg,fromId) 'role' 'status'
+//                                     'peers' 'peerJoined' 'peerLeft'
+//   Network.setSnapshotProvider(fn)-> host sends fn() to each client as it joins
+//   Network.role()  peerCount()  clientId()
+//   Network.getLanIps()            -> LAN URLs to reach a LOCAL host (host side)
+//   Network.getRoomCode()          -> the current room's code
 // -----------------------------------------------------------------------------
 
 window.Network = (() => {
 
   let role = 'offline';       // 'offline' | 'host' | 'client'
-  let socket = null;          // socket.io-client connection to the relay
+  let ws = null;              // native WebSocket to the relay
   let peers = 0;              // connected clients (host side)
   let assignedId = null;      // our id in the room (client side)
-  let lanIps = [];            // reported by the relay (host side)
+  let roomCode = null;        // current room code
+  let lanIps = [];            // LAN IPs of a LOCAL relay (host side; empty on cloud)
   let snapshotProvider = null;
 
   const handlers = {};
 
-  function on(event, cb) {
-    (handlers[event] = handlers[event] || []).push(cb);
-  }
+  function on(event, cb) { (handlers[event] = handlers[event] || []).push(cb); }
   function emitLocal(event) {
     const args = Array.prototype.slice.call(arguments, 1);
     (handlers[event] || []).forEach(function (cb) {
@@ -48,148 +45,106 @@ window.Network = (() => {
   }
   function setRole(r) { role = r; emitLocal('role', role); }
 
-  // The socket.io browser client is served by jam-server.js at /socket.io/…;
-  // if the app is opened without that server, `io` is missing and jam is off.
-  function available() { return typeof io !== 'undefined'; }
+  function newRoomCode() {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
+    let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+    return s;
+  }
+
+  function relayUrl(code) {
+    const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return scheme + '//' + location.host + '/jam?room=' + encodeURIComponent(code);
+  }
 
   function nameHint() {
-    try {
-      if (window.Profile && Profile.current && Profile.current()) return Profile.displayName();
-    } catch (e) {}
+    try { if (window.Profile && Profile.current && Profile.current()) return Profile.displayName(); } catch (e) {}
     return 'Player';
   }
 
-  function connect(url) {
-    const opts = { reconnectionAttempts: 3, timeout: 5000 };
-    return url ? io(url, opts) : io(opts);   // no url == same origin (the relay we loaded from)
+  function send_(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+  // Relay -> here. Common to host and client.
+  function handleFrame(m) {
+    switch (m.t) {
+      case 'role':
+        roomCode = m.room || roomCode;
+        if (m.role === 'host') {
+          lanIps = m.lanIps || [];
+          peers = 0; setRole('host'); emitLocal('peers', 0);
+          emitLocal('status', 'Hosting room ' + roomCode + ' — share the code.');
+        } else {
+          assignedId = m.id; setRole('client');
+          emitLocal('status', 'Joined room ' + roomCode + '.');
+        }
+        break;
+      case 'denied':
+        emitLocal('status', 'Couldn’t host — ' + (m.reason || 'try another code') + '.');
+        leave();
+        break;
+      case 'peer-joined':
+        peers++; emitLocal('peers', peers);
+        if (snapshotProvider) send_({ t: 'msg', target: m.id, mtype: 'state', payload: snapshotProvider() });
+        emitLocal('peerJoined', m.id);
+        break;
+      case 'peer-left':
+        peers = Math.max(0, peers - 1); emitLocal('peers', peers); emitLocal('peerLeft', m.id);
+        break;
+      case 'host-gone':
+        if (role === 'client') { setRole('offline'); emitLocal('status', 'Host left — back to solo (pattern kept).'); }
+        break;
+      case 'status':
+        emitLocal('status', m.text || '');
+        break;
+      case 'msg':
+        emitLocal('message', { type: m.mtype, payload: m.payload }, m.from);
+        break;
+    }
   }
 
-  // Messages + disconnect behave the same for host and client.
-  function wireCommon() {
-    socket.on('jam-msg', function (env) {
-      emitLocal('message', { type: env.type, payload: env.payload }, env.from);
-    });
-    socket.on('jam-status', function (s) { emitLocal('status', s); });
+  function openSocket(code, joinRole) {
+    let sock;
+    try { sock = new WebSocket(relayUrl(code)); }
+    catch (e) { emitLocal('status', 'Jam unavailable here.'); return null; }
+    ws = sock;
+    sock.onopen = function () { send_({ t: 'join', role: joinRole, name: nameHint() }); };
+    sock.onmessage = function (ev) { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } handleFrame(m); };
+    sock.onerror = function () {
+      emitLocal('status', joinRole === 'host'
+        ? 'Jam relay unreachable — is the server running?'
+        : 'Can’t reach room ' + code + ' — same site & code?');
+    };
+    sock.onclose = function () {
+      if (role === 'client') { setRole('offline'); emitLocal('status', 'Disconnected — back to solo (pattern kept).'); }
+      else if (role === 'host') { setRole('offline'); emitLocal('peers', 0); emitLocal('status', 'Stopped hosting.'); }
+    };
+    return sock;
   }
-
-  // ── host ────────────────────────────────────────────────────────────────────
 
   function host() {
     if (role !== 'offline') return;
-    if (!available()) {
-      emitLocal('status', 'Jam server not running — start it with “npm start”, then reload.');
-      return;
-    }
-    socket = connect(null);
-    wireCommon();
-
-    socket.on('connect', function () {
-      socket.emit('join-jam', { role: 'host', name: nameHint() });
-    });
-    socket.on('jam-role', function (d) {
-      if (!d || d.role !== 'host') return;
-      lanIps = d.lanIps || [];
-      peers = 0;
-      setRole('host');
-      emitLocal('peers', 0);
-      emitLocal('status', 'Hosting — friends join via ' + (lanIps[0] || 'your Wi‑Fi IP'));
-      console.log('[Network] hosting via relay; LAN:', lanIps.join(', '));
-    });
-    socket.on('jam-denied', function (d) {
-      emitLocal('status', 'Host failed — ' + ((d && d.reason) || 'unknown') + '.');
-      leave();
-    });
-    socket.on('jam-peer-joined', function (p) {
-      peers++;
-      emitLocal('peers', peers);
-      // Bring the newcomer fully up to date with one targeted snapshot.
-      if (snapshotProvider && socket) {
-        socket.emit('jam-msg', { target: p.id, type: 'state', payload: snapshotProvider() });
-      }
-      emitLocal('peerJoined', p.id);
-    });
-    socket.on('jam-peer-left', function (p) {
-      peers = Math.max(0, peers - 1);
-      emitLocal('peers', peers);
-      emitLocal('peerLeft', p.id);
-    });
-    socket.on('connect_error', function () {
-      emitLocal('status', 'Jam server unreachable — is it running on this machine?');
-    });
-    socket.on('disconnect', function () {
-      if (role === 'host') { setRole('offline'); emitLocal('peers', 0); emitLocal('status', 'Stopped hosting.'); }
-    });
+    roomCode = newRoomCode();
+    emitLocal('status', 'Starting room ' + roomCode + '…');
+    openSocket(roomCode, 'host');
   }
 
-  // ── client ────────────────────────────────────────────────────────────────────
-
-  function join(address) {
+  function join(code) {
     if (role !== 'offline') return;
-    if (!available()) {
-      emitLocal('status', 'Open the host’s address (http://their-ip:' + (location.port || 3001) + '/app.html) to jam.');
-      return;
-    }
-    address = (address || '').trim();
-    let url = null;                                  // blank -> same relay we loaded from
-    if (address) {
-      if (/^https?:\/\//i.test(address)) url = address;
-      else if (address.indexOf(':') !== -1) url = 'http://' + address;
-      else url = 'http://' + address + ':' + (location.port || 3001);
-    }
-
-    socket = connect(url);
-    wireCommon();
-    emitLocal('status', 'Connecting' + (address ? ' to ' + address : '') + '…');
-
-    socket.on('connect', function () {
-      socket.emit('join-jam', { role: 'client', name: nameHint() });
-    });
-    socket.on('jam-role', function (d) {
-      if (!d || d.role !== 'client') return;
-      assignedId = d.id;
-      setRole('client');
-      emitLocal('status', 'Connected' + (address ? ' to ' + address : '') + '.');
-      console.log('[Network] joined room as', assignedId);
-    });
-    socket.on('jam-host-gone', function () {
-      if (role === 'client') {
-        setRole('offline');
-        emitLocal('status', 'Host left — back to solo (pattern kept).');
-      }
-    });
-    socket.on('connect_error', function () {
-      emitLocal('status', 'Can’t reach ' + (address || 'the host') + ' — same WiFi? Host running?');
-    });
-    socket.io.on('reconnect_failed', function () {
-      emitLocal('status', 'Could not connect' + (address ? ' to ' + address : '') + '.');
-      leave();
-    });
-    socket.on('disconnect', function () {
-      if (role === 'client') {
-        setRole('offline');
-        emitLocal('status', 'Disconnected — back to solo (pattern kept).');
-      }
-    });
+    code = (code || '').trim().toUpperCase() || 'MAIN';
+    roomCode = code;
+    emitLocal('status', 'Joining room ' + code + '…');
+    openSocket(code, 'client');
   }
-
-  // ── shared ────────────────────────────────────────────────────────────────────
 
   function leave() {
-    if (socket) { try { socket.close(); } catch (e) {} socket = null; }
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) {} ws = null; }
     peers = 0; assignedId = null;
     emitLocal('peers', 0);
-    if (role !== 'offline') {
-      setRole('offline');
-      emitLocal('status', 'Left the session.');
-    }
+    if (role !== 'offline') { setRole('offline'); emitLocal('status', 'Left the session.'); }
+    roomCode = null;
   }
 
-  // Host: relay broadcasts to every client. Client: relay forwards to the host.
-  // Offline: no-op.
-  function send(type, payload) {
-    if (!socket) return;
-    socket.emit('jam-msg', { type: type, payload: payload });
-  }
+  // Host: relay broadcasts to clients. Client: relay forwards to host.
+  function send(type, payload) { send_({ t: 'msg', mtype: type, payload: payload }); }
 
   return {
     host: host,
@@ -199,6 +154,7 @@ window.Network = (() => {
     on: on,
     setSnapshotProvider: function (fn) { snapshotProvider = fn; },
     getLanIps: function () { return lanIps.slice(); },
+    getRoomCode: function () { return roomCode; },
     role: function () { return role; },
     peerCount: function () { return peers; },
     clientId: function () { return assignedId; },

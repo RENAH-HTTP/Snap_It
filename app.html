@@ -232,6 +232,9 @@
     body[data-rotation="270"] .panel {
       width: calc(100dvh - 90px);
       height: calc(100dvw - 32px);
+      /* Don't let the wrapper (sized to the rotated box) shrink the panel below
+         its own width — that would collapse a flipped module to a small square. */
+      flex-shrink: 0;
     }
     body[data-rotation="90"] .panel {
       transform: rotate(90deg);
@@ -1497,10 +1500,10 @@
   <!-- Jam session popover -->
   <div id="jam-panel" class="jam-panel">
     <div class="jam-head">JAM SESSION <span id="jam-peers" class="jam-peers"></span></div>
-    <p id="jam-status" class="jam-status">Offline — host a session, or join a friend's.</p>
-    <button id="jam-host" class="hw primary jam-wide">Host on this WiFi</button>
+    <p id="jam-status" class="jam-status">Offline — host a session, or join with a room code.</p>
+    <button id="jam-host" class="hw primary jam-wide">Host a session</button>
     <div class="jam-join-row">
-      <input id="jam-address" class="jam-input" placeholder="Host IP, e.g. 192.168.1.23" spellcheck="false" />
+      <input id="jam-address" class="jam-input" placeholder="Room code, e.g. GOLD" spellcheck="false" autocapitalize="characters" maxlength="8" />
       <button id="jam-join" class="hw">Join</button>
     </div>
     <div id="jam-ips" class="jam-ips"></div>
@@ -1630,16 +1633,16 @@
   </div> <!-- /rot-layer -->
 
   <!-- Third-party Libraries -->
-  <script src="node_modules/tone/build/Tone.js"></script>
-  <script src="node_modules/@tensorflow/tfjs/dist/tf.min.js"></script>
-  <script src="node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js"></script>
+  <!-- Vendored libraries (copied from node_modules) so the site is self-contained
+       for static hosting like Cloudflare Pages/Workers. Refresh with the copy step
+       in DEPLOY.md if you bump versions. -->
+  <script src="vendor/Tone.js"></script>
+  <script src="vendor/tf.min.js"></script>
+  <script src="vendor/coco-ssd.min.js"></script>
 
-  <!-- Jam networking: socket.io browser client, served by jam-server.js at
-       /socket.io/… . Absent (404, harmless) if the app is opened without that
-       server — network.js then keeps jam disabled instead of crashing. -->
-  <script src="/socket.io/socket.io.js"></script>
-
-  <!-- App modules. Plain scripts that attach to window; load order matters. -->
+  <!-- App modules. Plain scripts that attach to window; load order matters.
+       Jam networking uses the browser's native WebSocket (see network.js) — no
+       client library to load; it talks to /jam on whatever origin served the app. -->
   <script src="src/cameraStub.js"></script>
   <script src="src/visualizer.js"></script>
   <script src="src/vision/vision.js"></script>

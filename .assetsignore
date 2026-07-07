@@ -1,0 +1,14 @@
+# Files NOT uploaded as Cloudflare static assets (keep the deploy small).
+.git
+.gitignore
+node_modules
+worker
+build.js
+build-objects.js
+build-sample-map.js
+gen-samples.js
+jam-server.js
+package-lock.json
+*.md
+visuals
+data

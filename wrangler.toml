@@ -1,0 +1,22 @@
+# Cloudflare deploy for Snap It: one Worker serves the static app AND the jam
+# relay (/jam) backed by a Durable Object per room. Deploy with: npx wrangler deploy
+name = "snap-it"
+main = "worker/jam-worker.js"
+compatibility_date = "2024-09-23"
+
+# Serve the app's files as static assets; the Worker only intercepts /jam.
+# node_modules/.git etc. are excluded via .assetsignore (keep the upload small —
+# make sure the libs app.html references, e.g. tone/tfjs, are reachable; vendor
+# them into /vendor or a build output if you trim node_modules). See DEPLOY.md.
+[assets]
+directory = "."
+binding = "ASSETS"
+
+# One Durable Object class = the room relay (free-tier, SQLite-backed).
+[[durable_objects.bindings]]
+name = "JAM_ROOMS"
+class_name = "JamRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["JamRoom"]

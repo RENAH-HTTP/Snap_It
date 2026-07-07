@@ -55,9 +55,9 @@ window.Jam = (() => {
   let outputId = 'host';
 
   function machineName() {
-    // A logged-in player's chosen name beats the machine's hostname.
+    // A logged-in player's chosen name, otherwise a friendly default.
     if (window.Profile && Profile.current && Profile.current()) return Profile.displayName();
-    try { return require('os').hostname(); } catch (e) { return 'Player'; }
+    return 'Player';
   }
 
   function myId() {
@@ -448,6 +448,7 @@ window.Jam = (() => {
     role: function () { return Network.role(); },
     peerCount: function () { return Network.peerCount(); },
     getLanIps: function () { return Network.getLanIps(); },
+    getRoomCode: function () { return Network.getRoomCode(); },
     // audio-output routing
     setOutput: setOutput,
     isOutput: isOutput,
