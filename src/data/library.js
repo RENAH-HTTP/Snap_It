@@ -1,4 +1,4 @@
-// library.js
+// src/data/library.js
 // -----------------------------------------------------------------------------
 // The player's collection of unlocked samples.
 //

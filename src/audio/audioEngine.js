@@ -1,4 +1,4 @@
-// audioEngine.js
+// src/audio/audioEngine.js
 // -----------------------------------------------------------------------------
 // Everything that makes sound. Built on Tone.js (loaded as the global `Tone`
 // in index.html). It does three things:

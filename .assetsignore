@@ -8,11 +8,10 @@
 /.wrangler
 /node_modules
 /worker
-/build.js
-/build-objects.js
-/build-sample-map.js
-/gen-samples.js
-/jam-server.js
+/tools
+/server
+/docs
+/dist
 /package-lock.json
 *.md
 /visuals

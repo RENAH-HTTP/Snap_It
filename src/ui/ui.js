@@ -1,4 +1,4 @@
-// ui.js
+// src/ui/ui.js
 // -----------------------------------------------------------------------------
 // All DOM rendering and event wiring. This is the only module that touches the
 // page. It orchestrates startup, then renders the three tabs:

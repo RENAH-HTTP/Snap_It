@@ -1,12 +1,17 @@
 /**
  * build.js
  * Bundles the web assets into dist/ for Cloudflare Pages deployment.
- * Run: node build.js
+ * Run: node tools/build.js   (from the project root)
  */
 const fs = require('fs');
 const path = require('path');
 
-const OUT = path.join(__dirname, 'dist');
+// This script lives in tools/; run everything relative to the project root so
+// the copy()/copyDir() calls below keep using simple relative paths.
+const ROOT = path.join(__dirname, '..');
+process.chdir(ROOT);
+
+const OUT = path.join(ROOT, 'dist');
 
 // Clean and recreate dist/
 if (fs.existsSync(OUT)) fs.rmSync(OUT, { recursive: true });
@@ -40,8 +45,11 @@ copy('sw.js', path.join(OUT, 'sw.js'));
 
 // Copy directories
 copyDir('src', path.join(OUT, 'src'));
+copyDir('styles', path.join(OUT, 'styles'));
+copyDir('vendor', path.join(OUT, 'vendor'));
 copyDir('data', path.join(OUT, 'data'));
 copyDir('samples', path.join(OUT, 'samples'));
+copyDir('img', path.join(OUT, 'img'));
 
 // Copy Node module bundles needed at runtime
 const nodeFiles = [

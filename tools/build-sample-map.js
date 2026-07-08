@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = 'C:/Users/charl/Documents/SNAP IT SAMPLES';
-const PROJECT = __dirname;
+const PROJECT = path.join(__dirname, '..'); // this script lives in tools/
 const DEST = path.join(PROJECT, 'samples');
 const MAP_PATH = path.join(PROJECT, 'data', 'objectSampleMap.json');
 

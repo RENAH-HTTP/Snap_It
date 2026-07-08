@@ -6,7 +6,7 @@
 // opened from this server (http on your WiFi) or from the published Cloudflare
 // site (wss). Rooms are addressed by a short code so several groups don't collide.
 //
-//   Run:   npm start           (node jam-server.js, PORT env optional)
+//   Run:   npm start           (node server/jam-server.js, PORT env optional)
 //   Local: open http://localhost:3001/app.html      -> "Host"  (get a room code)
 //   LAN:   friends open http://<your-lan-ip>:3001/app.html -> "Join" + code
 //
@@ -25,11 +25,13 @@
 const http = require('http');
 const os = require('os');
 const url = require('url');
+const path = require('path');
 const handler = require('serve-handler');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
-const ROOT = __dirname;
+// This file lives in server/; the app's static files sit one level up.
+const ROOT = path.join(__dirname, '..');
 
 function lanIps() {
   const nets = os.networkInterfaces();

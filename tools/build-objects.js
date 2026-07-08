@@ -12,8 +12,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEST = path.join(__dirname, 'samples');
-const MAP_PATH = path.join(__dirname, 'data', 'objectSampleMap.json');
+const ROOT = path.join(__dirname, '..'); // this script lives in tools/
+const DEST = path.join(ROOT, 'samples');
+const MAP_PATH = path.join(ROOT, 'data', 'objectSampleMap.json');
 
 // The 80 classes COCO-SSD can detect. Each becomes one collectible object.
 const COCO_CLASSES = [

@@ -1,4 +1,4 @@
-// src/visualizer.js
+// src/ui/visualizer.js
 // -----------------------------------------------------------------------------
 // Live-signal visualizer. A small, self-contained module that paints the sound
 // you're hearing — the master output — as a filled waveform, redrawn every

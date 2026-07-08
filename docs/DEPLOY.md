@@ -9,7 +9,7 @@ whatever origin served the app.
 
 ```bash
 npm install
-npm start            # = node jam-server.js  (serves the app + jam relay on :3001)
+npm start            # = node server/jam-server.js  (serves the app + jam relay on :3001)
 ```
 
 - Host: open http://localhost:3001/app.html → **Jam Session → Host** → you get a **room code**.

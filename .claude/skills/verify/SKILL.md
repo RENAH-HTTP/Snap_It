@@ -10,7 +10,7 @@ Browser PWA (no build step) + Cloudflare Worker (jam relay `/jam` + accounts `/a
 ## Frontend (app.html)
 
 ```bash
-node jam-server.js &          # serves repo root + local jam relay on :3001
+node server/jam-server.js &   # serves repo root + local jam relay on :3001
 ```
 
 Drive with headless Edge over raw CDP (no Playwright in this repo; `ws` is in node_modules):
@@ -43,4 +43,4 @@ npx wrangler dev --config <scratch>/cf/wrangler.toml --port 8788   # up in ~6s
 ## Gotchas
 
 - `taskkill //F //IM workerd.exe` if a previous wrangler dev leaks; two workerd instances cause reload churn.
-- jam-server serves no-cache-ish but Edge still cached `src/ui.js` once — always bust cache when re-testing an edit.
+- jam-server serves no-cache-ish but Edge still cached `src/ui/ui.js` once — always bust cache when re-testing an edit.

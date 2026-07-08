@@ -3,16 +3,17 @@ const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './src/cameraStub.js',
+  './styles/app.css',
+  './src/vision/cameraStub.js',
+  './src/ui/visualizer.js',
   './src/vision/vision.js',
-  './src/library.js',
-  './src/audioEngine.js',
+  './src/data/profile.js',
+  './src/data/library.js',
+  './src/audio/audioEngine.js',
   './src/multiplayer/network.js',
   './src/multiplayer/jam.js',
-  './src/ui.js',
-  './node_modules/tone/build/Tone.js',
-  './node_modules/@tensorflow/tfjs/dist/tf.min.js',
-  './node_modules/@tensorflow-models/coco-ssd/dist/coco-ssd.min.js'
+  './src/ui/ui.js',
+  './vendor/Tone.js'
 ];
 
 self.addEventListener('install', event => {

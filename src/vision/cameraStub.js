@@ -1,4 +1,4 @@
-// cameraStub.js
+// src/vision/cameraStub.js
 // -----------------------------------------------------------------------------
 // A placeholder for the real camera / computer-vision module that a teammate is
 // building separately. Its only job right now is to expose a clean entry point

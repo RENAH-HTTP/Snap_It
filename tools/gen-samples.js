@@ -11,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 
 const SR = 44100; // sample rate
-const OUT = path.join(__dirname, "samples");
+const OUT = path.join(__dirname, "..", "samples"); // this script lives in tools/
 fs.mkdirSync(OUT, { recursive: true });
 
 // ---- WAV writer (mono, 16-bit PCM) -----------------------------------------
