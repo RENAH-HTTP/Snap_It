@@ -8,6 +8,10 @@ window.Vision = (() => {
 
   const SCORE_THRESHOLD = 0.60;  // min confidence to accept a detection
   const DEBOUNCE_MS     = 2500;  // min gap between two scans of the same object
+  const DETECT_EVERY_MS = 90;    // cap detection to ~11 Hz — running model.detect()
+                                 // flat-out on every animation frame pegs a phone
+                                 // GPU and makes the whole UI crawl. ~11 Hz is
+                                 // still instant-feeling for scanning objects.
 
   // Classes we never react to or draw (people walk in front of the camera a lot).
   const IGNORED_CLASSES = { 'person': true };
@@ -40,6 +44,28 @@ window.Vision = (() => {
   let running  = false;
   let currentDeviceId = null;
   const lastScan = {};   // sampleKey -> timestamp, for per-object debounce
+
+  // ── lazy dependency loading ─────────────────────────────────────────────────
+  // TensorFlow.js and COCO-SSD are large; injecting them only when the scanner
+  // first runs keeps the app's initial load fast on phones / very old laptops.
+  let depsPromise = null;
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('failed to load ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  function loadDeps() {
+    if (depsPromise) return depsPromise;
+    depsPromise = (async function () {
+      if (typeof tf === 'undefined') await loadScript('vendor/tf.min.js');
+      if (typeof cocoSsd === 'undefined') await loadScript('vendor/coco-ssd.min.js');
+    })();
+    return depsPromise;
+  }
 
   // ── camera plumbing ─────────────────────────────────────────────────────────
 
@@ -88,6 +114,7 @@ window.Vision = (() => {
   // ── public ──────────────────────────────────────────────────────────────────
 
   async function start(videoElement, canvasElement, statusElement) {
+    if (running) return;              // already scanning — ignore double-starts
     videoEl  = videoElement;
     canvasEl = canvasElement;
     statusEl = statusElement;
@@ -103,15 +130,21 @@ window.Vision = (() => {
       return;
     }
 
-    setStatus('Loading detection model…');
-    try {
-      // cocoSsd is the global exposed by the coco-ssd UMD bundle loaded in index.html.
-      model = await cocoSsd.load();
-      console.log('[Vision] model ready');
-    } catch (err) {
-      console.error('[Vision] model load failed:', err);
-      setStatus('Model failed to load (check network). Use manual scan below.');
-      return;
+    // Reuse the model across camera on/off toggles — reloading the weights every
+    // time is slow and pointless.
+    if (!model) {
+      setStatus('Loading detection model…');
+      try {
+        // Load TensorFlow + COCO-SSD on demand (kept out of the boot path for speed).
+        await loadDeps();
+        // cocoSsd is the global exposed by the coco-ssd UMD bundle.
+        model = await cocoSsd.load();
+        console.log('[Vision] model ready');
+      } catch (err) {
+        console.error('[Vision] model load failed:', err);
+        setStatus('Model failed to load (check network). Use manual scan below.');
+        return;
+      }
     }
 
     running = true;
@@ -132,17 +165,26 @@ window.Vision = (() => {
   async function detectLoop() {
     if (!running || !model) return;
 
-    let predictions = [];
-    try {
-      predictions = await model.detect(videoEl);
-    } catch (err) {
-      console.warn('[Vision] detect error', err);
+    const t0 = performance.now();
+
+    // Skip the expensive detect entirely while the tab/screen is backgrounded or
+    // the video frame isn't ready — just reschedule.
+    if (!document.hidden && videoEl && videoEl.readyState >= 2) {
+      let predictions = [];
+      try {
+        predictions = await model.detect(videoEl);
+      } catch (err) {
+        console.warn('[Vision] detect error', err);
+      }
+      drawOverlay(predictions);
+      handleBestPrediction(predictions);
     }
 
-    drawOverlay(predictions);
-    handleBestPrediction(predictions);
-
-    requestAnimationFrame(detectLoop);
+    if (!running) return;
+    // Pace the loop: wait out the remainder of the interval after detection
+    // (which itself can take tens of ms) instead of firing back-to-back.
+    const wait = Math.max(0, DETECT_EVERY_MS - (performance.now() - t0));
+    setTimeout(detectLoop, wait);
   }
 
   function handleBestPrediction(predictions) {
@@ -220,6 +262,7 @@ window.Vision = (() => {
 
   return {
     start, stop, listCameras, setCamera,
+    isRunning: () => running,
     currentCamera: () => currentDeviceId,
   };
 })();

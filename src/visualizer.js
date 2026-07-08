@@ -32,15 +32,35 @@ window.Visualizer = (function () {
 
     // Match the canvas backing store to its laid-out size (crisp on HiDPI, and
     // it re-fits for free when the panel is resized or the phone rotates).
+    let needsFit = true;
     function fit() {
       const w = canvas.clientWidth || 320;
       const h = canvas.clientHeight || 90;
       const W = Math.round(w * dpr), H = Math.round(h * dpr);
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+      needsFit = false;
+    }
+    // Re-measure only when the canvas ACTUALLY changes size — never every frame.
+    // Reading clientWidth/Height each frame forces a synchronous reflow that
+    // interleaves with the mixer-crayon drags (which write layout), and that
+    // read/write thrash is what made the UI crawl while audio played (#3/#12).
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(function () { needsFit = true; }).observe(canvas);
+    } else {
+      window.addEventListener('resize', function () { needsFit = true; });
     }
 
-    function frame() {
-      fit();
+    // Frame pacing: ~30fps while the signal is live, ~10fps once it goes quiet.
+    // Idle is cheap but still wakes instantly the moment a hit lands.
+    let last = 0, lastActive = 0;
+    function frame(now) {
+      raf = requestAnimationFrame(frame);
+      if (document.hidden) return;               // don't spin while backgrounded
+      const idle = (now - lastActive) > 400;
+      if (now - last < (idle ? 96 : 33)) return; // throttle
+      last = now;
+
+      if (needsFit) fit();
       const W = canvas.width, H = canvas.height, mid = H / 2;
       ctx.clearRect(0, 0, W, H);
 
@@ -54,30 +74,10 @@ window.Visualizer = (function () {
         if (v > peak) peak = v;
       }
       const active = peak > 0.004; // below this the output is effectively silent
+      if (active) lastActive = now;
 
-      // The SELECTED drum's full sample waveform, drawn as dense mirrored ink
-      // bars — the bold "printed waveform" look, in our black-on-cream style.
-      const gap = Math.max(1, Math.round(dpr));       // 1px bars…
-      const stride = Math.max(1, Math.round(2 * dpr)); // …every ~2px, so it reads dense
-      if (current.key && window.audioEngine && audioEngine.getWaveform) {
-        const wave = audioEngine.getWaveform(current.key);
-        if (wave && wave.length) {
-          const per = Math.max(1, Math.floor(wave.length / (W / stride)));
-          ctx.fillStyle = 'rgba(23,23,26,.86)';
-          let bin = 0;
-          for (let x = 0; x < W; x += stride) {
-            let peak = 0;
-            const start = bin * per;
-            for (let j = 0; j < per; j++) {
-              const a = Math.abs(wave[start + j] || 0);
-              if (a > peak) peak = a;
-            }
-            bin++;
-            const barH = Math.max(dpr, peak * H * 0.94);
-            ctx.fillRect(x, mid - barH / 2, gap, barH);
-          }
-        }
-      }
+      // (Removed the selected drum's dense ink-bar "printed waveform" — the Live
+      // Signal now shows only the live orange output trace below.)
 
       // Faint centre guide, always present so the panel never reads as "off".
       ctx.strokeStyle = 'rgba(23,23,27,.14)';
@@ -115,12 +115,10 @@ window.Visualizer = (function () {
         ctx.lineJoin = 'round';
         ctx.stroke();
       }
-
-      raf = requestAnimationFrame(frame);
     }
 
     if (raf) cancelAnimationFrame(raf);
-    frame();
+    raf = requestAnimationFrame(frame);
   }
 
   // Tell the visualizer which drum's waveform to show underneath the live scope.

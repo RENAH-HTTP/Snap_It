@@ -16,7 +16,7 @@
 //   audioEngine.removeTrack(trackId)
 //   audioEngine.toggleStep(trackId, stepIdx) -> flip a step, returns new state
 //   audioEngine.setTrackMute(trackId, muted)
-//   audioEngine.setMasterBpm(bpm)            -> clamps to 60-180, returns clamped
+//   audioEngine.setMasterBpm(bpm)            -> clamps to 60-220, returns clamped
 //   audioEngine.play() / audioEngine.stop()
 //   audioEngine.onStep(callback)             -> called each step (for UI playhead)
 // -----------------------------------------------------------------------------
@@ -73,13 +73,18 @@ const audioEngine = (function () {
       crush:  new Tone.BitCrusher(4),
       delay:  new Tone.FeedbackDelay('8n', 0.4),
       reverb: new Tone.Reverb({ decay: 2.8 }),
+      // Brickwall limiter on the master bus. With every track and the mixer
+      // pushed to max, the summed signal overshoots 0 dBFS and clips hard at the
+      // destination (the crackle the user heard). A -1 dBFS limiter catches
+      // those peaks so the mix stays clean however loud it's driven.
+      limiter: new Tone.Limiter(-1),
     };
     fxChain.drive.wet.value = 0;
     fxChain.crush.wet.value = 0;
     fxChain.delay.wet.value = 0;
     fxChain.reverb.wet.value = 0;
     fxChain.filter.chain(fxChain.drive, fxChain.crush, fxChain.delay,
-                         fxChain.reverb, Tone.getDestination());
+                         fxChain.reverb, fxChain.limiter, Tone.getDestination());
 
     Object.keys(map).forEach(function (objectType) {
       // encodeURIComponent so filenames with '#' (e.g. "..._D#.wav") aren't cut
@@ -138,6 +143,14 @@ const audioEngine = (function () {
     if (sequence) { try { sequence.stop(); sequence.dispose(); } catch (e) {} sequence = null; }
     const stepIndices = [];
     for (let i = 0; i < patternLen; i++) stepIndices.push(i);
+
+    // Loop the Transport itself at the pattern boundary. Without this the Sequence
+    // loops but the Transport keeps running the whole bar, so a 4-step pattern was
+    // heard as the full 16 steps. loopEnd is patternLen sixteenth-notes ("bars:beats:16ths").
+    const transport = Tone.getTransport();
+    transport.loop = true;
+    transport.loopStart = 0;
+    transport.loopEnd = '0:0:' + patternLen;
 
     sequence = new Tone.Sequence(
       function (time, step) {
@@ -473,9 +486,9 @@ const audioEngine = (function () {
     return keyTranspose;
   }
 
-  // Set the master tempo, clamped to the 60-180 range. Returns the value used.
+  // Set the master tempo, clamped to the 60-220 range. Returns the value used.
   function setMasterBpm(bpm) {
-    const clamped = Math.max(60, Math.min(180, Math.round(bpm)));
+    const clamped = Math.max(60, Math.min(220, Math.round(bpm)));
     Tone.getTransport().bpm.value = clamped;
     console.log('[audioEngine] BPM =', clamped);
     return clamped;
@@ -584,6 +597,16 @@ const audioEngine = (function () {
     if (!srcPad) return null;
     const t = tracks.find(function (x) { return x.srcPad === srcPad; });
     return t ? t.id : null;
+  }
+
+  // Replace a track's sound settings (ADSR + tune) by track id. Used to sync the
+  // "Shape the Sound" edits across a jam so whichever machine is the output plays
+  // the same envelope — the pad→track link (srcPad) is machine-local, so peers
+  // address the shared track by its id instead.
+  function setTrackSnd(trackId, snd) {
+    const t = findTrack(trackId);
+    if (!t || !snd) return;
+    t.snd = Object.assign({}, snd);
   }
 
   // Swap the sample a track plays WITHOUT dropping its programmed steps, so
@@ -712,9 +735,14 @@ const audioEngine = (function () {
     }
   }
 
+  // Last XY-pad position, so a jam can carry the live FX morph to every screen
+  // (and to a late joiner via the snapshot). `dry` means the rack is bypassed.
+  let lastMorph = { x: 0.5, y: 0.5, dry: true };
+
   // x/y are 0..1 across the pad. Short ramps keep the sweeps clickless.
   function setFxMorph(x, y) {
     if (!fxChain) return;
+    lastMorph = { x: x, y: y, dry: false };
     FX_ZONES.forEach(function (z) {
       const d = Math.hypot(x - z.cx, y - z.cy);
       const w = Math.pow(Math.max(0, 1 - d / 0.5), 1.4); // silent past half a pad
@@ -725,8 +753,11 @@ const audioEngine = (function () {
   // Everything dry again (double-click on the pad).
   function fxBypass() {
     if (!fxChain) return;
+    lastMorph = { x: lastMorph.x, y: lastMorph.y, dry: true };
     FX_ZONES.forEach(function (z) { applyFxWeight(z.fx, 0); });
   }
+
+  function getFxMorph() { return { x: lastMorph.x, y: lastMorph.y, dry: lastMorph.dry }; }
 
   // Turn every step of every track off (the "Clear" button).
   function clearAllSteps() {
@@ -768,6 +799,7 @@ const audioEngine = (function () {
       key: keyTranspose,
       patternLen: patternLen,
       nextTrackId: nextTrackId,
+      fxMorph: getFxMorph(),   // so a late joiner lands on the same live FX
     };
   }
 
@@ -826,6 +858,12 @@ const audioEngine = (function () {
     if (typeof snap.swing === 'number') setSwing(snap.swing);
     if (typeof snap.key === 'number') setKeyTranspose(snap.key);
     if (typeof snap.patternLen === 'number') setPatternLen(snap.patternLen);
+
+    // Restore the live FX-pad position (dry vs. a morph point).
+    if (snap.fxMorph) {
+      if (snap.fxMorph.dry) fxBypass();
+      else setFxMorph(snap.fxMorph.x, snap.fxMorph.y);
+    }
   }
 
   // EXPORT (the old record button): capture one bar of the beat to a file.
@@ -843,9 +881,10 @@ const audioEngine = (function () {
     exporting = true;
 
     recorder = new Tone.Recorder();
-    // Tap the tail of the master rack so we capture the whole mix — shared preview
-    // voices AND every per-track FX chain all flow through here.
-    fxChain.reverb.connect(recorder);
+    // Tap the tail of the master rack (post-limiter) so we capture the whole
+    // mix — shared preview voices AND every per-track FX chain — and the export
+    // gets the same clip protection as the live output.
+    fxChain.limiter.connect(recorder);
     recorder.start();
 
     // Make sure the loop is actually running while we capture it.
@@ -858,7 +897,7 @@ const audioEngine = (function () {
     await new Promise(function (r) { setTimeout(r, barMs + 150); });
 
     const blob = await recorder.stop();
-    try { fxChain.reverb.disconnect(recorder); } catch (e) {}
+    try { fxChain.limiter.disconnect(recorder); } catch (e) {}
     recorder.dispose();
     recorder = null;
     if (!wasPlaying) transport.stop();
@@ -917,12 +956,14 @@ const audioEngine = (function () {
     getAnalyser: getAnalyser,
     setFxMorph: setFxMorph,
     fxBypass: fxBypass,
+    getFxMorph: getFxMorph,
     getSampleSettings: getSampleSettings,
     setSampleEnv: setSampleEnv,
     setSampleCents: setSampleCents,
     updateTrackSndForPad: updateTrackSndForPad,
     getPadForTrack: getPadForTrack,
     getTrackIdForPad: getTrackIdForPad,
+    setTrackSnd: setTrackSnd,
     setTrackSample: setTrackSample,
     setStepPitch: setStepPitch,
     getStepPitch: getStepPitch,

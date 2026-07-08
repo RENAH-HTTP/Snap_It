@@ -1,14 +1,18 @@
 # Files NOT uploaded as Cloudflare static assets (keep the deploy small).
-.git
-.gitignore
-node_modules
-worker
-build.js
-build-objects.js
-build-sample-map.js
-gen-samples.js
-jam-server.js
-package-lock.json
+# NOTE: gitignore semantics — an unanchored name (e.g. "data") matches that
+# folder at ANY depth, so anchor with a leading slash to hit only the top level.
+# Do NOT exclude "data": the top-level data/objectSampleMap.json and src/data/*.js
+# are loaded at runtime by library.js / app.html.
+/.git
+/.gitignore
+/.wrangler
+/node_modules
+/worker
+/build.js
+/build-objects.js
+/build-sample-map.js
+/gen-samples.js
+/jam-server.js
+/package-lock.json
 *.md
-visuals
-data
+/visuals

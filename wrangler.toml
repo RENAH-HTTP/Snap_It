@@ -20,3 +20,21 @@ class_name = "JamRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["JamRoom"]
+
+# ── Cross-device accounts (/auth/*) ──────────────────────────────────────────
+# 1. Create the KV namespace once:  npx wrangler kv namespace create USERS
+#    then paste the printed id below (and a preview_id for `wrangler dev`).
+[[kv_namespaces]]
+binding = "USERS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+# preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_ID"
+
+# 2. Email confirmation via Resend. APP_URL is this site's public origin (used to
+#    build the confirm link) and MAIL_FROM must be a verified Resend sender.
+[vars]
+APP_URL = "https://snap-it.example.workers.dev"
+MAIL_FROM = "Snap It <noreply@yourdomain.com>"
+# 3. The Resend API key is a SECRET, never commit it:
+#      npx wrangler secret put RESEND_API_KEY
+#    (Until KV + key are set, accounts fall back to device-local storage in the
+#     browser, so the app still runs — see src/data/profile.js.)

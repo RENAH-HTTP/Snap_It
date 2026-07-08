@@ -25,11 +25,15 @@ const ui = (function () {
   async function init() {
     console.log('[ui] starting up');
 
-    // Load data first, then the audio engine (it reads the sample map).
-    await library.load();
+    // Load data first, then the audio engine (it reads the sample map). Wrap both
+    // awaits so a single failed fetch (e.g. a missing asset on a bad deploy) can't
+    // abort init and leave the whole UI — jam button, hamburger, mixer — unwired.
+    try { await library.load(); }
+    catch (e) { console.error('[ui] library.load failed — continuing', e); }
     // Fill in waveforms as each sample's buffer finishes downloading.
     audioEngine.onSampleLoaded(redrawWaveforms);
-    await audioEngine.init();
+    try { await audioEngine.init(); }
+    catch (e) { console.error('[ui] audioEngine.init failed — continuing', e); }
 
     // Jam session layer: all sequencer edits flow through Jam so they hit the
     // shared project when connected (and just the local engine when solo).
@@ -39,6 +43,7 @@ const ui = (function () {
 
     setupDeck();
     setupModuleControls();
+    setupModulePager();
     setupSequencerTransport();
     setupTopBar();
     setupProfilePanel();
@@ -46,11 +51,17 @@ const ui = (function () {
     setupPicker();
 
     // Start the live camera + object detection, then wire the camera picker.
+    // When the feed is actually live, the eye "opens" into a rectangular
+    // viewfinder (see setCameraLive); if the camera never starts it stays a
+    // blinking eye behind the "camera unavailable" state.
     Vision.start(
       document.getElementById('camera-video'),
       document.getElementById('camera-canvas'),
       document.getElementById('vision-status')
-    ).then(setupCameraPicker);
+    ).then(function () {
+      setCameraLive(Vision.isRunning && Vision.isRunning());
+      setupCameraPicker();
+    });
     renderLibrary();
     syncTracksToPads(); // the kit IS the sequencer — mirror pads into rows
     renderSequencer();
@@ -71,7 +82,57 @@ const ui = (function () {
   // ---- deck & track selection ------------------------------------------------
 
   let activeTrackIndex = 0; // 0..3 for TR1..TR4, 'fx' for FX
-  
+
+  // Open (rectangular viewfinder) when the camera is live; closed (playful
+  // blinking eye) when it's off/starting. Keeps the eye charming at rest but
+  // never lets it crop or cover the scene while you're scanning (#9).
+  function setCameraLive(live) {
+    const eye = document.getElementById('camera-eye');
+    if (eye) eye.classList.toggle('eye-open', !!live);
+  }
+
+  // Swipe-deck pager (phone/tablet). The deck becomes a horizontal scroll-snap
+  // strip in CSS; this builds the tap-dots and keeps them in sync with the
+  // current page. On desktop the dots are hidden and this is a harmless no-op.
+  function setupModulePager() {
+    const deck = document.querySelector('.deck');
+    const pager = document.getElementById('deck-pager');
+    if (!deck || !pager) return;
+
+    const LABELS = {
+      'p-video': 'Scanner', 'p-mixer': 'Mixer', 'p-tempo': 'Tempo',
+      'p-keypad': 'Kit', 'p-sound': 'Sound', 'p-scope': 'Signal',
+      'p-seq': 'Sequencer', 'p-xy': 'FX Pad',
+    };
+    const pages = Array.prototype.slice.call(deck.querySelectorAll(':scope > .panel-rot-wrapper'));
+    pager.innerHTML = '';
+    const dots = pages.map(function (page, idx) {
+      const panel = page.querySelector('.panel');
+      let label = 'Module ' + (idx + 1);
+      if (panel) Object.keys(LABELS).forEach(function (c) { if (panel.classList.contains(c)) label = LABELS[c]; });
+      const dot = document.createElement('button');
+      dot.className = 'deck-dot' + (idx === 0 ? ' active' : '');
+      dot.title = label;
+      dot.setAttribute('aria-label', label);
+      dot.addEventListener('click', function () {
+        deck.scrollTo({ left: idx * deck.clientWidth, behavior: 'smooth' });
+      });
+      pager.appendChild(dot);
+      return dot;
+    });
+
+    let raf = null;
+    function syncActive() {
+      raf = null;
+      const w = deck.clientWidth || 1;
+      const idx = Math.max(0, Math.min(dots.length - 1, Math.round(deck.scrollLeft / w)));
+      dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
+    }
+    deck.addEventListener('scroll', function () {
+      if (!raf) raf = requestAnimationFrame(syncActive);
+    }, { passive: true });
+  }
+
   function setupModuleControls() {
     // Fullscreen for Scanner
     const camFsBtn = document.getElementById('cam-fullscreen-btn');
@@ -103,6 +164,7 @@ const ui = (function () {
         cameraEnabled = !cameraEnabled;
         if (!cameraEnabled) {
           if (window.Vision && Vision.stop) Vision.stop();
+          setCameraLive(false);   // eye closes back to its blinking self
           overlay.classList.add('show');
           camToggleBtn.style.color = 'var(--red, #FF3366)';
         } else {
@@ -111,7 +173,7 @@ const ui = (function () {
               document.getElementById('camera-video'),
               document.getElementById('camera-canvas'),
               document.getElementById('vision-status')
-            );
+            ).then(function () { setCameraLive(Vision.isRunning && Vision.isRunning()); });
           }
           overlay.classList.remove('show');
           camToggleBtn.style.color = 'var(--ink)';
@@ -141,28 +203,32 @@ const ui = (function () {
         const y = Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height));
         cur.style.left = (x * 100) + '%';
         cur.style.top = (y * 100) + '%';
-        audioEngine.setFxMorph(x, y);
+        Jam.setFxMorph(x, y);   // apply locally + sync to every peer's pad/output
       }
       xy.addEventListener('pointerdown', function (e) {
         if (bypassBtn && (e.target === bypassBtn || bypassBtn.contains(e.target))) return;
-        e.preventDefault();
+        const gate = touchDragGate(xy, e);
         audioEngine.unlock();
-        setDry(false); // grabbing the pad engages the rack
-        xy.setPointerCapture(e.pointerId);
-        placeXy(e);
+        let started = false;
+        function grab(ev) { if (!started) { started = true; setDry(false); } placeXy(ev); }
+        if (gate.engaged) grab(e); // mouse engages immediately
+        function move(ev) { if (!gate.moveOK(ev)) return; ev.preventDefault(); grab(ev); }
         function up() {
-          xy.removeEventListener('pointermove', placeXy);
+          gate.end();
+          xy.removeEventListener('pointermove', move);
           xy.removeEventListener('pointerup', up);
+          xy.removeEventListener('pointercancel', up);
         }
-        xy.addEventListener('pointermove', placeXy);
+        xy.addEventListener('pointermove', move);
         xy.addEventListener('pointerup', up);
+        xy.addEventListener('pointercancel', up);
       });
 
       // Explicit "no effect": the DRY button (and double-click) drop the whole
       // rack to dry so there's a clear, findable neutral.
       function bypass() {
         setDry(true);
-        audioEngine.fxBypass();
+        Jam.fxBypass();   // dry everywhere, not just this screen
       }
       if (bypassBtn) {
         bypassBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
@@ -201,7 +267,7 @@ const ui = (function () {
         b.addEventListener('click', function () {
           activeTrackIndex = String(i);
           renderTrackBar();
-          applyTrackFocus();
+          applyTrackFocus(true);   // user tap: scroll the row into view
         });
       })(i);
       wrap.appendChild(b);
@@ -214,14 +280,17 @@ const ui = (function () {
     fx.addEventListener('click', function () {
       activeTrackIndex = 'fx';
       renderTrackBar();
-      applyTrackFocus();
+      applyTrackFocus(true);
     });
     wrap.appendChild(fx);
   }
 
   // TR buttons focus a sequencer row (outline + scroll to it); FX flashes the
   // XY panel, which is where the performance effects live.
-  function applyTrackFocus() {
+  // `scroll` is only true on a USER tap — rebuild restores (renderSequencer at
+  // boot / after jam edits) must never scrollIntoView, because that drags the
+  // mobile swipe deck horizontally to the sequencer page (found in verification).
+  function applyTrackFocus(scroll) {
     const blocks = document.querySelectorAll('#sequencer-tracks .track-block');
     blocks.forEach(function (b, idx) {
       b.classList.toggle('tr-focus', String(idx) === String(activeTrackIndex));
@@ -231,15 +300,32 @@ const ui = (function () {
       xyCard.classList.remove('flash');
       void xyCard.offsetWidth;
       xyCard.classList.add('flash');
-      xyCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (scroll) xyCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
       const b = blocks[+activeTrackIndex];
-      if (b) b.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (b && scroll) b.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }
 
   function switchToTab(name) {
     // Tabs no longer exist; user swipes manually. This is a stub for old code.
+  }
+
+  // Drive the XY FX cursor from a remote peer's move (jam sync). Kept at module
+  // scope so the Jam event handlers can reach it without setupDeck's closures.
+  function moveXyCursor(x, y) {
+    const xy = document.getElementById('xy-pad');
+    if (!xy) return;
+    const cur = xy.querySelector('.xy-cursor');
+    if (cur) { cur.style.left = (x * 100) + '%'; cur.style.top = (y * 100) + '%'; }
+  }
+  function setXyDry(dry) {
+    const xy = document.getElementById('xy-pad');
+    if (!xy) return;
+    const cur = xy.querySelector('.xy-cursor');
+    const bypassBtn = document.getElementById('xy-bypass');
+    if (cur) cur.classList.toggle('off', dry);
+    if (bypassBtn) bypassBtn.classList.toggle('on', dry);
   }
 
   // ---- jam session: engine events -> DOM --------------------------------------
@@ -278,6 +364,27 @@ const ui = (function () {
     Jam.on('patternLen', function (len) {
       renderSequencer();
       updateFlipSeqWidth();   // flipped length tracks the beat count
+    });
+
+    // XY FX pad, driven by any peer (or restored from the joined snapshot).
+    Jam.on('fxMorph', function (x, y) {
+      moveXyCursor(x, y);
+      setXyDry(false);
+    });
+    Jam.on('fxBypass', function () {
+      setXyDry(true);
+    });
+
+    // A track's ADSR/tune changed on another machine. If the Shape-the-Sound
+    // editor happens to be open on the pad that owns that track, mirror the
+    // fader positions; otherwise the audio is already updated in the engine.
+    Jam.on('snd', function (trackId, snd) {
+      if (padBank == null) return;
+      const sel = findPad(selectedPadId);
+      if (sel && audioEngine.getTrackIdForPad(sel.id) === trackId) {
+        sel.snd = Object.assign({}, snd);
+        renderEditor(sel);
+      }
     });
 
     Jam.on('mute', function (trackId, muted) {
@@ -349,14 +456,10 @@ const ui = (function () {
 
     Jam.on('roster', renderOutputs);
 
-    toggle.addEventListener('click', function () {
-      const wasOpen = panel.classList.contains('open');
-      // Close the other top-bar popovers so only one is up at a time.
-      document.querySelectorAll('.guide-panel.open, .profile-panel.open').forEach(function (p) {
-        p.classList.remove('open');
-      });
-      panel.classList.toggle('open', !wasOpen);
-    });
+    // NOTE: the jam button's open/close is wired once in setupTopBar() (the shared
+    // "one popover at a time" toggler). Do NOT also toggle it here — two handlers
+    // on the same button cancel each other out and the panel never appears.
+    void toggle;
 
     hostBtn.addEventListener('click', function () { Jam.hostSession(); });
     joinBtn.addEventListener('click', function () { Jam.joinSession(addrIn.value); });
@@ -374,6 +477,10 @@ const ui = (function () {
     Jam.on('session', function (role) {
       const inSession = role !== 'offline';
       dot.classList.toggle('on', inSession);
+      // Jam now lives in the drawer, so surface a live-session dot on the
+      // hamburger too — you can see a jam is running without opening the menu.
+      const hb = document.getElementById('hamburger-button');
+      if (hb) hb.classList.toggle('jam-active', inSession);
       leave.style.display = inSession ? '' : 'none';
       hostBtn.disabled = inSession;
       joinBtn.disabled = inSession;
@@ -465,10 +572,19 @@ const ui = (function () {
         document.getElementById('pp-mail').textContent = cur.email;
         document.getElementById('pp-ava').textContent = (cur.name || '?').charAt(0);
         nameIn.value = cur.name;
+        // Nudge to confirm the email, when the backend says it isn't verified yet.
+        const unv = document.getElementById('pp-unverified');
+        if (unv) unv.style.display = (Profile.isVerified && Profile.isVerified()) ? 'none' : '';
       } else {
         document.getElementById('pp-guestname').value = Profile.guestName();
       }
     }
+
+    const resendBtn = document.getElementById('pp-resend');
+    if (resendBtn) resendBtn.addEventListener('click', function () {
+      if (Profile.resendVerification) Profile.resendVerification();
+      showToast('Confirmation email sent — check your inbox');
+    });
 
     // Passwordless player name: enough to be seen by name in a jam.
     document.getElementById('pp-saveguest').addEventListener('click', function () {
@@ -500,7 +616,9 @@ const ui = (function () {
       }
     });
     document.getElementById('pp-savename').addEventListener('click', function () {
-      run(function () { Profile.setName(nameIn.value); showToast('Name saved'); }, err2);
+      run(function () {
+        return Promise.resolve(Profile.setName(nameIn.value)).then(function () { showToast('Name saved'); });
+      }, err2);
     });
     nameIn.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') document.getElementById('pp-savename').click();
@@ -979,16 +1097,18 @@ const ui = (function () {
       set(1 - (e.clientY - r.top) / r.height);
     }
     vfader.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      vfader.setPointerCapture(e.pointerId);
-      fromEvent(e);
-      function move(ev) { fromEvent(ev); }
+      const gate = touchDragGate(vfader, e);
+      if (gate.engaged) fromEvent(e);
+      function move(ev) { if (!gate.moveOK(ev)) return; ev.preventDefault(); fromEvent(ev); }
       function up() {
+        gate.end();
         vfader.removeEventListener('pointermove', move);
         vfader.removeEventListener('pointerup', up);
+        vfader.removeEventListener('pointercancel', up);
       }
       vfader.addEventListener('pointermove', move);
       vfader.addEventListener('pointerup', up);
+      vfader.addEventListener('pointercancel', up);
     });
     if (resetNorm != null) vfader.addEventListener('dblclick', function () { set(resetNorm); });
   }
@@ -1008,16 +1128,18 @@ const ui = (function () {
       set((e.clientX - r.left) / r.width);
     }
     hslider.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      hslider.setPointerCapture(e.pointerId);
-      fromEvent(e);
-      function move(ev) { fromEvent(ev); }
+      const gate = touchDragGate(hslider, e);
+      if (gate.engaged) fromEvent(e);
+      function move(ev) { if (!gate.moveOK(ev)) return; ev.preventDefault(); fromEvent(ev); }
       function up() {
+        gate.end();
         hslider.removeEventListener('pointermove', move);
         hslider.removeEventListener('pointerup', up);
+        hslider.removeEventListener('pointercancel', up);
       }
       hslider.addEventListener('pointermove', move);
       hslider.addEventListener('pointerup', up);
+      hslider.addEventListener('pointercancel', up);
     });
     if (resetNorm != null) hslider.addEventListener('dblclick', function () { set(resetNorm); });
   }
@@ -1378,7 +1500,12 @@ const ui = (function () {
     // sequencer track made from this pad so the beat reflects the change.
     const commit = function () {
       savePadBank();
-      audioEngine.updateTrackSndForPad(pad.id, pad.snd);
+      // If this pad owns a sequencer track, sync the change through Jam so the
+      // shared track's envelope matches on every peer (offline: just applies
+      // locally). Pads without a track yet fall back to the local updater.
+      const tid = audioEngine.getTrackIdForPad(pad.id);
+      if (tid != null) Jam.setTrackSnd(tid, pad.snd);
+      else audioEngine.updateTrackSndForPad(pad.id, pad.snd);
     };
     // The sample's own defaults — what a double-click on a fader initialises to.
     const defSnd = defaultSnd(pad.key);
@@ -1482,16 +1609,18 @@ const ui = (function () {
       }
       slot.addEventListener('pointerdown', function (e) {
         if (e.target === muteBtn || muteBtn.contains(e.target)) return; // mute handles itself
-        e.preventDefault();
-        slot.setPointerCapture(e.pointerId);
-        setFromEvent(e);
-        function move(ev) { setFromEvent(ev); }
+        const gate = touchDragGate(slot, e);
+        if (gate.engaged) setFromEvent(e);
+        function move(ev) { if (!gate.moveOK(ev)) return; ev.preventDefault(); setFromEvent(ev); }
         function up() {
+          gate.end();
           slot.removeEventListener('pointermove', move);
           slot.removeEventListener('pointerup', up);
+          slot.removeEventListener('pointercancel', up);
         }
         slot.addEventListener('pointermove', move);
         slot.addEventListener('pointerup', up);
+        slot.addEventListener('pointercancel', up);
       });
       // Double-click resets the channel to the default level.
       slot.addEventListener('dblclick', function (e) {
@@ -1544,7 +1673,17 @@ const ui = (function () {
       ctx.stroke();
     }
 
-    function frame() {
+    // ~30fps while sound is playing, ~10fps when silent, and nothing at all
+    // while the tab/screen is backgrounded — so the scopes stop stealing the
+    // main thread from UI drags when nothing is actually moving (#3/#12).
+    let last = 0, lastActive = 0;
+    function frame(now) {
+      requestAnimationFrame(frame);
+      if (document.hidden) return;
+      const idle = (now - lastActive) > 400;
+      if (now - last < (idle ? 96 : 33)) return;
+      last = now;
+
       const analyser = audioEngine.getAnalyser();
       const values = analyser ? analyser.getValue() : null;
       let peak = 0;
@@ -1552,6 +1691,7 @@ const ui = (function () {
         const v = Math.abs(values[i]);
         if (v > peak) peak = v;
       }
+      if (peak > 0.006) lastActive = now;
 
       if (mixCtx) {
         mixCtx.clearRect(0, 0, mixCanvas.width, mixCanvas.height);
@@ -1566,7 +1706,6 @@ const ui = (function () {
         trace(sideCtx, sideCanvas.width, sideCanvas.height, values,
               '#2A2F6E', 2.2, sideCanvas.height * 0.42);
       }
-      requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
@@ -1769,12 +1908,12 @@ const ui = (function () {
       fxPick.className = 'pitch-lane adv-fxpick';
       const fxPickIco = document.createElement('div');
       fxPickIco.className = 'pitch-lane-ico';
-      fxPickIco.textContent = 'FX';
+      fxPickIco.textContent = 'FX drives';
       fxPick.appendChild(fxPickIco);
-        
+
       const fxPickTxt = document.createElement('div');
       fxPickTxt.className = 'pitch-lane-txt';
-      fxPickTxt.textContent = ' drives';
+      fxPickTxt.textContent = '';
       fxPick.appendChild(fxPickTxt);
       const fxBtnWrap = document.createElement('div');
       fxBtnWrap.className = 'adv-fxbtns';
@@ -1806,12 +1945,12 @@ const ui = (function () {
         lane.className = 'pitch-lane';
         const labIco = document.createElement('div');
         labIco.className = 'pitch-lane-ico';
-        labIco.textContent = spec.label.substring(0, 3);
+        labIco.textContent = spec.label;
         lane.appendChild(labIco);
-          
+
         const labTxt = document.createElement('div');
         labTxt.className = 'pitch-lane-txt';
-        labTxt.textContent = spec.label.substring(3);
+        labTxt.textContent = '';
         lane.appendChild(labTxt);
         const wrap = document.createElement('div');
         wrap.className = 'pitch-cells';
@@ -1820,7 +1959,8 @@ const ui = (function () {
           const c = cells[i];
           c.textContent = spec.fmt(v);
           c.classList.toggle('nz', spec.nz(v));
-          c.title = 'Step ' + (i + 1) + ' ' + spec.label.toLowerCase() + ' ' + spec.fmt(v) + (spec.unitLabel || '');
+          c.title = 'Step ' + (i + 1) + ' ' + spec.label.toLowerCase() + ' ' + spec.fmt(v) + (spec.unitLabel || '') +
+            (spec.tapToggle != null ? ' · tap to toggle, drag to fine-tune' : '');
           if (spec.kind === 'pitch') setPitchStepBadge(i, v);
         }
         function clamp(v) { return Math.max(spec.min, Math.min(spec.max, spec.round ? Math.round(v) : v)); }
@@ -1831,20 +1971,44 @@ const ui = (function () {
           if (i >= audioEngine.getPatternLen()) pc.classList.add('pitch-cell-hidden');
           (function (i) {
             pc.addEventListener('pointerdown', function (e) {
-              e.preventDefault();
-              pc.setPointerCapture(e.pointerId);
+              const gate = touchDragGate(pc, e);
               const startY = e.clientY;
               const startVal = spec.get(track.id, i);
+              let moved = false;
               function move(ev) {
+                if (!gate.moveOK(ev)) return;
+                ev.preventDefault();
+                // 3px deadzone: a tap shouldn't nudge the value — it toggles (below).
+                if (!moved && Math.abs(ev.clientY - startY) <= 3) return;
+                moved = true;
                 spec.set(track.id, i, clamp(startVal + ((startY - ev.clientY) / spec.px) * spec.unit));
               }
-              function up() { pc.removeEventListener('pointermove', move); pc.removeEventListener('pointerup', up); }
+              function up() {
+                gate.end();
+                // Tap (no drag) on a toggle-able lane flips the step on/off at a
+                // sensible amount — so "turning on the effect" is one tap, not a
+                // fiddly precise drag (#5). Drag still does fine control.
+                if (!moved && spec.tapToggle != null) {
+                  const cur = spec.get(track.id, i);
+                  spec.set(track.id, i, cur > spec.reset + 1e-4 ? spec.reset : spec.tapToggle);
+                }
+                pc.removeEventListener('pointermove', move);
+                pc.removeEventListener('pointerup', up);
+                pc.removeEventListener('pointercancel', up);
+              }
               pc.addEventListener('pointermove', move);
               pc.addEventListener('pointerup', up);
+              pc.addEventListener('pointercancel', up);
             });
+            let wAcc = 0;
             pc.addEventListener('wheel', function (e) {
               e.preventDefault();
-              spec.set(track.id, i, clamp(spec.get(track.id, i) + (e.deltaY < 0 ? spec.wheel : -spec.wheel)));
+              wAcc += e.deltaY;
+              const T = 40;
+              while (Math.abs(wAcc) >= T) {
+                spec.set(track.id, i, clamp(spec.get(track.id, i) + (wAcc < 0 ? spec.wheel : -spec.wheel)));
+                wAcc += (wAcc < 0 ? T : -T);
+              }
             }, { passive: false });
             // double-click / right-click INITIALISE this step's parameter
             pc.addEventListener('dblclick', function () { spec.set(track.id, i, spec.reset); });
@@ -1865,17 +2029,18 @@ const ui = (function () {
                   min: -12, max: 12, unit: 1, px: 6, wheel: 1, reset: 0, round: true, unitLabel: ' st',
                   fmt: function (v) { return v === 0 ? '0' : (v > 0 ? '+' + v : '' + v); }, nz: function (v) { return v !== 0; } });
       buildLane({ kind: 'vel', label: 'Vel', get: audioEngine.getStepVel, set: Jam.setStepVel,
-                  min: 0, max: 1, unit: 0.01, px: 1.5, wheel: 0.05, reset: 1, round: false, unitLabel: '%',
+                  min: 0, max: 1, unit: 0.01, px: 2.5, wheel: 0.05, reset: 1, round: false, unitLabel: '%',
                   fmt: function (v) { return String(Math.round(v * 100)); }, nz: function (v) { return v < 0.995; } });
       buildLane({ kind: 'len', label: 'Gate', get: audioEngine.getStepLen, set: Jam.setStepLen,
                   min: 1, max: 16, unit: 1, px: 8, wheel: 1, reset: 1, round: true, unitLabel: '',
                   fmt: function (v) { return String(v); }, nz: function (v) { return v > 1; } });
                   
       fxOrder.forEach(function (k) {
-        buildLane({ kind: 'fx_' + k, label: 'FX · ' + FX_META[k].label, 
-                    get: function(tid, i) { return audioEngine.getStepFx(tid, k, i); }, 
+        buildLane({ kind: 'fx_' + k, label: 'FX · ' + FX_META[k].label,
+                    get: function(tid, i) { return audioEngine.getStepFx(tid, k, i); },
                     set: function(tid, i, v) { Jam.setStepFx(tid, k, i, v); },
-                    min: 0, max: 1, unit: 0.01, px: 1.5, wheel: 0.05, reset: 0, round: false, unitLabel: '%',
+                    min: 0, max: 1, unit: 0.01, px: 2.5, wheel: 0.05, reset: 0, tapToggle: 0.7,
+                    round: false, unitLabel: '%',
                     fmt: function (v) { return String(Math.round(v * 100)); }, nz: function (v) { return v > 0.005; } });
         laneEls['fx_' + k].lane.classList.add('fx-lane');
         laneEls['fx_' + k].lane.style.setProperty('--fx-col', FX_META[k].color);
@@ -1952,6 +2117,7 @@ const ui = (function () {
 
     // Clear all steps across every track (re-renders via the 'pattern' event).
     document.getElementById('clear-button').addEventListener('click', function () {
+      closeDrawer();
       if (confirm('Are you sure you want to clear the sequencer?')) {
         Jam.clearAll();
       }
@@ -1984,6 +2150,7 @@ const ui = (function () {
     document.querySelectorAll('.panel').forEach(p => rotObserver.observe(p));
 
     document.getElementById('flip-button').addEventListener('click', function () {
+      closeDrawer();
       let currentRotation = parseInt(document.body.getAttribute('data-rotation') || '0', 10);
       currentRotation = (currentRotation + 90) % 360;
       document.body.setAttribute('data-rotation', currentRotation);
@@ -2004,16 +2171,23 @@ const ui = (function () {
       Jam.triggerResize();
     });
 
-    // Side Drawer logic
+    // Side Drawer logic. A scrim sits behind the open drawer and both blocks
+    // interaction with the app underneath and closes the drawer when tapped.
     const drawer = document.getElementById('side-drawer');
+    const scrim = document.getElementById('drawer-scrim');
     const hamburgerBtn = document.getElementById('hamburger-button');
     const closeDrawerBtn = document.getElementById('close-drawer');
+    function setDrawer(open) {
+      if (drawer) drawer.classList.toggle('open', open);
+      if (scrim) scrim.classList.toggle('open', open);
+    }
     if (hamburgerBtn && drawer) {
-      hamburgerBtn.addEventListener('click', () => drawer.classList.add('open'));
+      hamburgerBtn.addEventListener('click', () => setDrawer(true));
     }
     if (closeDrawerBtn && drawer) {
-      closeDrawerBtn.addEventListener('click', () => drawer.classList.remove('open'));
+      closeDrawerBtn.addEventListener('click', () => setDrawer(false));
     }
+    if (scrim) scrim.addEventListener('click', () => setDrawer(false));
 
     // EXPORT (the Roland "record" button): capture one bar to a file.
     const exportBtn = document.getElementById('export-button');
@@ -2127,17 +2301,31 @@ const ui = (function () {
     if (knurl) knurl.style.setProperty('--tilt', (((120 - bpm) / 60) * 22).toFixed(1) + 'deg');
   }
 
+  // Shared gate for pointer-drag controls. The control grabs the gesture right
+  // away (responsive on both mouse and touch). A short movement threshold means a
+  // dead-still tap doesn't nudge the value, but a real drag works immediately.
+  function touchDragGate(el, e) {
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    if (e.cancelable) e.preventDefault();
+    return {
+      engaged: true,
+      moveOK: function (ev) { if (ev.cancelable) ev.preventDefault(); return true; },
+      end: function () {},
+    };
+  }
+
   // Vertical drag-to-adjust for the tempo chips (with wheel support). A press
   // that never moves counts as a tap and fires onTap instead.
   function attachDragValue(el, pxPerStep, get, apply, onTap, resetVal) {
     if (!el) return; // element may not exist in every layout
     el.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      el.setPointerCapture(e.pointerId);
+      if (e.cancelable) e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
       const startY = e.clientY;
       const startV = get();
       let moved = false;
       function move(ev) {
+        if (ev.cancelable) ev.preventDefault();
         const d = Math.round((startY - ev.clientY) / pxPerStep);
         if (d !== 0) moved = true;
         if (moved) apply(startV + d);
@@ -2145,17 +2333,38 @@ const ui = (function () {
       function up() {
         el.removeEventListener('pointermove', move);
         el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
         if (!moved && onTap) onTap();
       }
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
     });
+    // Accumulate wheel delta and step only once per ~40px of scroll, so a single
+    // trackpad flick (which fires dozens of momentum events) nudges the value by
+    // one, not twenty — the "scrolls way too fast" complaint (#4).
+    let wheelAcc = 0;
     el.addEventListener('wheel', function (e) {
       e.preventDefault();
-      apply(get() + (e.deltaY < 0 ? 1 : -1));
+      wheelAcc += e.deltaY;
+      const THRESH = 40;
+      while (Math.abs(wheelAcc) >= THRESH) {
+        apply(get() + (wheelAcc < 0 ? 1 : -1));
+        wheelAcc += (wheelAcc < 0 ? THRESH : -THRESH);
+      }
     }, { passive: false });
     // Double-click initialises the value back to its default.
     if (resetVal != null) el.addEventListener('dblclick', function () { apply(resetVal); });
+  }
+
+  // Close the hamburger side drawer. Opening any popover (jam / guide / player)
+  // or firing a drawer action calls this first, so the drawer never sits open
+  // and overlapping behind the thing it launched.
+  function closeDrawer() {
+    const d = document.getElementById('side-drawer');
+    const s = document.getElementById('drawer-scrim');
+    if (d) d.classList.remove('open');
+    if (s) s.classList.remove('open');
   }
 
   function setupTopBar() {
@@ -2164,9 +2373,11 @@ const ui = (function () {
     const jamPanel = document.getElementById('jam-panel');
     const profilePanel = document.getElementById('profile-panel');
 
-    // Only one popover at a time.
+    // Only one popover at a time. Opening one also closes the side drawer so the
+    // popover isn't buried under it (#1).
     function toggle(panel) {
       if (!panel) return;
+      closeDrawer();
       const wasOpen = panel.classList.contains('open');
       [tempoPanel, guidePanel, jamPanel, profilePanel].forEach(function (p) {
         if (p) p.classList.remove('open');
@@ -2192,14 +2403,16 @@ const ui = (function () {
     // chip, the metronome plate, or the mustard fine-adjust plate.
     function getBpm() { return audioEngine.getBpm(); }
     function setBpm(v) { Jam.setBpm(v); }
-    attachDragValue(document.getElementById('bpm-chip'), 4, getBpm, setBpm,
+    // Higher px-per-step = calmer drag. These were far too twitchy on touch —
+    // a 1cm swipe rocketed the BPM (#4). ~8px/step lands ~1 BPM per finger-width.
+    attachDragValue(document.getElementById('bpm-chip'), 8, getBpm, setBpm,
       function () { toggle(tempoPanel); }, 120);
-    attachDragValue(document.getElementById('chip-bpm'), 4, getBpm, setBpm, null, 120);
-    attachDragValue(document.getElementById('metro-plate'), 3, getBpm, setBpm, null, 120);
-    attachDragValue(document.getElementById('knurl-plate'), 7, getBpm, setBpm, null, 120);
+    attachDragValue(document.getElementById('chip-bpm'), 8, getBpm, setBpm, null, 120);
+    attachDragValue(document.getElementById('metro-plate'), 8, getBpm, setBpm, null, 120);
+    attachDragValue(document.getElementById('knurl-plate'), 11, getBpm, setBpm, null, 120);
 
     // SWING (0..80, percent) and KEY (−12..+12 semitones). Double-click resets.
-    attachDragValue(document.getElementById('chip-swing'), 5,
+    attachDragValue(document.getElementById('chip-swing'), 8,
       function () { return Math.round(audioEngine.getSwing() * 100); },
       function (v) { Jam.setSwing(Math.max(0, Math.min(80, v)) / 100); }, null, 0);
     attachDragValue(document.getElementById('chip-key'), 14,

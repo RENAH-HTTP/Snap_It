@@ -23,7 +23,7 @@
 
       --frame:  #E7DEC8;   /* warm cream frame (page / bars)          */
       --paper:  #F7F3E9;   /* panel-inner / cream surfaces            */
-      --panel:  #F1EBDC;   /* floating panel plates                   */
+      --panel:  #FBF7EF;   /* floating panel plates (lighter than page so modules read without borders) */
       --cell:   #F9F5EC;   /* keypad cells, chips                     */
       --ink:    #17171A;   /* near-black ink, headings, thick borders */
       --label:  #8C8672;   /* small uppercase captions                */
@@ -54,6 +54,7 @@
 
       --step: 52px; --step-gap: 4px; --seq-label-w: 150px;
       --safe-b: env(safe-area-inset-bottom, 0px);
+      --topbar-h: 60px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -91,7 +92,7 @@
       font-size: 18px; font-weight: 900; letter-spacing: -.03em; color: var(--ink);
       text-decoration: none;
     }
-    .app-logo .mark { width: 32px; height: 32px; display: block; flex-shrink: 0; }
+    .app-logo .mark { height: 30px; width: auto; display: block; flex-shrink: 0; }
     .app-logo .pd { color: var(--orange); }
     @media (max-width: 620px) { .app-word { display: none; } }
 
@@ -126,11 +127,19 @@
     .tb-jam-pill.active .jam-dot-pill { display: block; }
     
     .tb-hamburger {
+      position: relative;
       width: 40px; height: 40px; border-radius: 12px; background: #000;
       display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
       cursor: pointer;
     }
     .tb-hamburger .hl { width: 18px; height: 2px; background: #fff; border-radius: 1px; }
+    /* Live-jam indicator on the menu button (jam now lives in the drawer). */
+    .jam-menu-dot {
+      position: absolute; top: 5px; right: 5px;
+      width: 8px; height: 8px; border-radius: 50%; background: #00FF88;
+      box-shadow: 0 0 6px rgba(0,255,136,.7); display: none;
+    }
+    .tb-hamburger.jam-active .jam-menu-dot { display: block; }
 
     .topbar-icon {
       transition: transform 0.3s ease-in-out;
@@ -142,14 +151,20 @@
     /* ================= SIDE DRAWER ================= */
     .side-drawer {
       position: fixed; top: 0; right: -320px; width: 280px; height: 100dvh;
-      background: var(--frame); border-left: 2.5px solid var(--ink);
+      background: var(--frame);
       z-index: 100; transition: right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
       display: flex; flex-direction: column;
     }
     .side-drawer.open { right: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); }
+    /* Scrim behind the open drawer — blocks interaction with the app underneath. */
+    .drawer-scrim {
+      position: fixed; inset: 0; z-index: 99; background: rgba(23,20,14,.4);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .drawer-scrim.open { opacity: 1; pointer-events: auto; }
     .drawer-header {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 20px; border-bottom: 2.5px solid var(--ink);
+      padding: 20px;
     }
     .drawer-header h3 { font-weight: 900; font-size: 18px; margin: 0; letter-spacing: -0.02em; }
     .drawer-close { font-size: 32px; line-height: 1; font-weight: 300; padding: 0; cursor: pointer; }
@@ -162,6 +177,13 @@
       color: var(--ink);
     }
     .danger-btn { color: var(--orange); border-color: rgba(230, 126, 34, 0.3); }
+
+    /* Jam is the drawer's headline action — give it the brand purple. */
+    .drawer-jam { background: #A03BFF; border-color: #A03BFF; color: #fff; }
+    .drawer-jam:hover { background: #A03BFF; filter: brightness(1.06); }
+    .drawer-jam svg { stroke: #fff; }
+    .drawer-jam .jam-dot-pill { margin-left: auto; }
+    .jam-dot-pill.on { display: block; }
 
     .bpm-chip {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -271,29 +293,74 @@
     .p-seq    { grid-area: seq; }
     .p-xy     { grid-area: xy; }
 
+    /* ---------------------------------------------------------------- */
+    /* MOBILE / TABLET: swipe deck — one module per screen, swipe L/R.   */
+    /* Desktop (fine pointer) keeps the modular grid above; this only    */
+    /* engages on touch-primary devices (auto by device, per #14).       */
+    /* ---------------------------------------------------------------- */
+    .deck-pager { display: none; }
+    @media (pointer: coarse) {
+      .deck {
+        display: flex; flex-direction: row;
+        grid-template-areas: none; gap: 0; padding: 0; max-width: none;
+        height: calc(100dvh - var(--topbar-h));
+        overflow-x: auto; overflow-y: hidden;
+        scroll-snap-type: x mandatory; scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+        scrollbar-width: none;
+      }
+      .deck::-webkit-scrollbar { display: none; }
+      .panel-rot-wrapper {
+        flex: 0 0 100%; width: 100vw; min-width: 100vw;
+        scroll-snap-align: start; scroll-snap-stop: always;
+        overflow: auto; align-items: flex-start;
+        padding: 14px 16px calc(56px + var(--safe-b));
+      }
+      /* Pager dots — tap to jump, and they track the current page. */
+      .deck-pager {
+        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
+        justify-content: center; align-items: center; gap: 7px;
+        padding: 9px 12px calc(9px + var(--safe-b));
+        background: linear-gradient(to top, var(--cream) 60%, rgba(241,238,229,0));
+        pointer-events: none;
+      }
+      .deck-dot {
+        pointer-events: auto; width: 8px; height: 8px; border-radius: 50%;
+        background: rgba(23,23,27,.22); border: none; padding: 0; cursor: pointer;
+        transition: width .2s, background .2s, border-radius .2s;
+      }
+      .deck-dot.active { width: 22px; border-radius: 5px; background: var(--ink); }
+    }
+
     /* Live-signal strip — the master waveform as it plays (Visualizer module). */
     .p-scope { padding: 12px 16px 14px; display: flex; flex-direction: column; height: 100%; }
     .live-scope {
       width: 100%; flex: 1; min-height: 104px; display: block; border-radius: 12px;
       background: var(--cell); border: 1px solid var(--hair-soft);
     }
+    /* Phone portrait: the scope is a monitor strip, not a hero — cap it so it
+       stops eating half the screen (#13). */
+    @media (max-width: 719px) {
+      .p-scope { height: auto; }
+      .p-scope .live-scope { flex: 0 0 auto; height: 84px; min-height: 0; }
+    }
 
     /* panels match the landing page: thick ink border + a hard offset shadow */
     .panel {
       display: flex; flex-direction: column;
       background: var(--panel); border-radius: 18px; padding: 14px 16px 16px;
-      min-width: 0; border: 2.5px solid var(--ink); box-shadow: 0 6px 0 var(--ink);
+      min-width: 0;
     }
     /* plain bold heading (no tag/pill), like the landing's section titles */
+    /* Module titles hidden per design — keep the row only when it holds action
+       buttons (camera toggle / fullscreen); text collapses via font-size:0. */
     .panel-cap {
       display: flex; align-items: center; gap: 8px;
-      font-size: 15px; font-weight: 900; letter-spacing: -.02em; color: var(--ink);
-      margin: 0 0 12px;
+      font-size: 0; font-weight: 900; letter-spacing: -.02em; color: var(--ink);
+      margin: 0;
     }
-    .panel-cap::before {
-      content: ''; width: 9px; height: 9px; border-radius: 50%;
-      background: var(--orange); flex-shrink: 0;
-    }
+    .panel-cap:has(.pc-actions) { margin: 0 0 10px; }
+    .panel-cap::before { content: none; }
     .pc-actions { margin-left: auto; display: flex; gap: 8px; }
     .pc-btn {
       background: none; border: none; cursor: pointer; color: var(--ink);
@@ -345,11 +412,34 @@
       flex: 1;
     }
     .panel-rot-wrapper.module-fullscreen .eye-ball {
+      left: 0; top: 0; transform: none;
       width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0;
+      animation: none;   /* no glancing in fullscreen — hold the frame steady */
     }
     .panel-rot-wrapper.module-fullscreen .eye-ball::after {
       display: none;
     }
+    /* Fullscreen: the lids are SQUARE (straight-edged shutters), not curved,
+       and rest fully retracted so they never cover the scene. */
+    .panel-rot-wrapper.module-fullscreen .eye-lid {
+      left: 0; width: 100%; border-radius: 0; animation: none;
+    }
+    .panel-rot-wrapper.module-fullscreen .lid-top    { transform: translateY(-104%); }
+    .panel-rot-wrapper.module-fullscreen .lid-bottom { transform: translateY(104%); }
+
+    /* ---- "open" state: the camera is live, so the eye opens into a clean
+       rectangular viewfinder (full frame, no round crop, no glancing, lids out
+       of the way). Idle keeps the full playful blinking eye. ---- */
+    .eye.eye-open { border-radius: 14px; }
+    .eye.eye-open .eye-ball {
+      left: 0; top: 0; transform: none;
+      width: 100%; height: 100%; aspect-ratio: auto; border-radius: 12px;
+      animation: none;
+    }
+    .eye.eye-open .eye-ball::after { display: none; }
+    .eye.eye-open .eye-lid { animation: none; }
+    .eye.eye-open .lid-top    { transform: translateY(-104%); }
+    .eye.eye-open .lid-bottom { transform: translateY(104%); }
     
     .cam-disabled-msg {
       position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -384,6 +474,7 @@
     .eye-lid {
       position: absolute; left: -6%; width: 112%; height: 58%; z-index: 4;
       background: var(--panel); box-shadow: 0 0 0 2px rgba(23,23,27,.28);
+      transition: transform .5s ease;   /* smooth "open" when the camera goes live */
     }
     .lid-top {
       top: -4%; border-radius: 0 0 50% 50% / 0 0 100% 100%;
@@ -438,7 +529,6 @@
     .mixer-plate {
       position: relative; flex: 1; min-height: 260px;
       border-radius: 14px; background: var(--cell); overflow: hidden;
-      border: 2.5px solid var(--ink);
     }
     .mix-ticks { display: none; }
     .mix-zero {
@@ -463,19 +553,17 @@
       position: relative; flex: 0 0 54px; width: 54px; height: 100%;
       display: flex; flex-direction: column; justify-content: flex-end;
       cursor: ns-resize; touch-action: none;
-      border-left: 2px solid var(--ink); border-right: 2px solid var(--ink);
       background: repeating-linear-gradient(0deg, rgba(23,23,26,.05) 0 2px, transparent 2px 12px);
     }
     .mix-crayon {   /* bold level bar with a thick ink cap */
       width: 100%; height: calc(var(--v, 50) * 1%);
       background: var(--bar-color, var(--navy));
-      border-top: 3px solid var(--ink);
       transition: height .08s linear;
     }
     .mix-crayon.hit { animation: crayonhit .16s ease-out; }
     @keyframes crayonhit { from { filter: brightness(1.4); } }
     .mix-strip {
-      height: 28px; flex-shrink: 0; border-top: 2px solid var(--ink);
+      height: 28px; flex-shrink: 0;
       background: var(--bar-color, var(--navy)); font-weight: 900;
       display: flex; align-items: center; justify-content: center; color: #fff;
     }
@@ -500,7 +588,7 @@
     .mix-mute {
       flex-shrink: 0; height: 24px; margin-top: 3px; border-radius: 6px;
       font-size: 10px; font-weight: 900; letter-spacing: .04em;
-      background: var(--cell); border: 2px solid var(--ink); color: var(--ink);
+      background: var(--cell); color: var(--ink);
       display: flex; align-items: center; justify-content: center;
       transition: background .12s, color .12s, filter .12s;
     }
@@ -519,7 +607,7 @@
       position: relative; display: flex; flex-direction: column;
       align-items: flex-start; justify-content: space-between;
       padding: 14px 16px; border-radius: 16px; cursor: ns-resize; touch-action: none;
-      border: 2.5px solid var(--ink); overflow: hidden;
+      overflow: hidden;
       transition: transform .1s, filter .12s;
     }
     .tempo-chip:hover { filter: brightness(1.04); }
@@ -803,21 +891,14 @@
 
     .pitch-lane { display: flex; align-items: stretch; }
     .pitch-lane-ico {
-      flex-shrink: 0; width: 48px; position: sticky; left: 0;
-      background: var(--panel); z-index: 10;
+      flex-shrink: 0; width: 150px; position: sticky; left: 0;
+      background: var(--panel); z-index: 10; white-space: nowrap;
       font-size: 9px; font-weight: 700; letter-spacing: .16em;
       text-transform: uppercase; color: var(--label);
       display: flex; align-items: center; padding-top: 5px; padding-left: 10px;
       border-right: 1px solid rgba(23,23,27,.08);
     }
-    .pitch-lane-txt {
-      flex-shrink: 0; width: 102px;
-      background: var(--panel);
-      font-size: 9px; font-weight: 700; letter-spacing: .16em;
-      text-transform: uppercase; color: var(--label);
-      display: flex; align-items: center; padding-top: 5px; padding-left: 8px;
-      border-right: 1px solid rgba(23,23,27,.08);
-    }
+    .pitch-lane-txt { display: none; }
     .pitch-cells { display: flex; gap: var(--step-gap); align-items: center; padding-top: 5px; }
     .pitch-cell {
       width: var(--step); height: 16px; border-radius: 4px;
@@ -857,6 +938,12 @@
     .pitch-lane.fx-lane .pitch-cell.nz {
       background: var(--fx-col, var(--violet)); border-color: var(--fx-col, var(--violet)); color: #fff;
     }
+    /* Empty FX steps show a faint dot in the effect's colour, so it's obvious
+       they're tap targets ("tap a step to add the effect") — not dead space. */
+    .pitch-lane.fx-lane .pitch-cell:not(.nz)::after {
+      content: ''; width: 4px; height: 4px; border-radius: 50%;
+      background: var(--fx-col, var(--violet)); opacity: .3;
+    }
 
     .empty {
       padding: 26px 8px; text-align: center;
@@ -882,7 +969,6 @@
     .xy-pad {
       position: relative; flex: 1; min-height: 260px;
       border-radius: 14px; overflow: hidden; touch-action: none; cursor: crosshair;
-      border: 2.5px solid var(--ink);
     }
     .xy-block { position: absolute; box-shadow: inset 0 0 0 1.5px rgba(23,23,26,.85); }
     .xy-orange { left: 0;   top: 0;   width: 47%; height: 45%; background: var(--orange); }  /* DRIVE  */
@@ -898,7 +984,7 @@
       position: absolute; left: 50%; top: 50%; width: 40px; height: 40px;
       transform: translate(-50%, -50%); transition: opacity .2s;
       border-radius: 50%; background: var(--cell);
-      border: 3px solid var(--ink); box-shadow: 0 3px 0 rgba(23,23,26,.35);
+      border: 3px solid var(--ink);
       pointer-events: none;
     }
     .xy-cursor::after {
@@ -914,10 +1000,10 @@
       display: flex; align-items: center; gap: 4px;
       font-size: 11px; font-weight: 900; letter-spacing: .06em;
       background: var(--cell); color: var(--ink); border: 2px solid var(--ink);
-      box-shadow: 0 2px 0 rgba(23,23,26,.4); transition: filter .12s, transform .1s;
+      transition: filter .12s, transform .1s;
     }
     .xy-bypass:hover { filter: brightness(1.04); }
-    .xy-bypass:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(23,23,26,.4); }
+    .xy-bypass:active { transform: translateY(1px); }
     .xy-bypass.on { background: var(--ink); color: var(--paper); }
 
     /* ---------------------------------------------------------------- */
@@ -960,7 +1046,10 @@
       border-radius: 18px 18px 0 0;
       padding: 18px 20px calc(22px + var(--safe-b));
       box-shadow: 0 -14px 44px rgba(23,23,27,.16);
-      max-height: 80vh; overflow-y: auto;
+      /* dvh (not vh) so the sheet accounts for the phone browser's URL bar and
+         never runs off-screen; it scrolls internally instead (#10). */
+      max-height: min(82dvh, 660px); overflow-y: auto;
+      overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     }
     .jam-panel.open, .guide-panel.open, .profile-panel.open { display: block; }
     @media (min-width: 700px) {
@@ -999,6 +1088,15 @@
     .pp-danger { margin-top: 6px; color: var(--red); }
     .pp-danger.confirm { background: var(--red); border-color: var(--red); color: #fff; }
     .pp-name { font-size: 15px; font-weight: 800; }
+    .pp-unverified {
+      font-size: 11.5px; line-height: 1.5; color: #8a6d1f;
+      background: rgba(224,163,46,.14); border: 1px solid rgba(224,163,46,.4);
+      border-radius: 9px; padding: 8px 10px; margin: 0 0 12px;
+    }
+    .pp-resend {
+      background: none; border: none; padding: 0; margin-left: 4px;
+      color: var(--navy); font-weight: 800; text-decoration: underline; cursor: pointer;
+    }
     .pp-mail {
       font-size: 11px; color: var(--label);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1008,15 +1106,15 @@
     /* Collection is the reward loop — make it the loudest thing in the bar. */
     .tb-coll {
       width: auto; height: 42px; padding: 0 15px; gap: 8px;
-      background: var(--orange); border: 2.5px solid var(--ink);
-      border-radius: 11px; box-shadow: 0 3px 0 var(--ink);
+      background: var(--orange);
+      border-radius: 11px;
       transition: transform .1s, filter .12s;
     }
     .tb-coll .coll-label {
       font-size: 12.5px; font-weight: 900; letter-spacing: .06em; color: #fff;
     }
     .tb-coll:hover { filter: brightness(1.06); }
-    .tb-coll:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+    .tb-coll:active { transform: translateY(2px); }
     /* On tiny phones the wordmark is already hidden — keep the label, drop nothing
        else; the button is short enough. Shrink the label a touch instead. */
     @media (max-width: 620px) { .tb-coll { height: 40px; padding: 0 12px; } .tb-coll .coll-label { font-size: 11.5px; } }
@@ -1262,13 +1360,7 @@
 
   <header class="topbar">
     <a class="app-logo" href="index.html" title="Back to the site">
-      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
-        <path d="M120 256C120 256 180 160 256 160C332 160 392 256 392 256C392 256 332 352 256 352C180 352 120 256 120 256Z" fill="none" stroke="#17171A" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="256" cy="256" r="62" fill="#E67E22"/>
-        <circle cx="256" cy="256" r="23" fill="#17171A"/>
-        <rect x="78" y="248" width="40" height="16" rx="8" fill="#17171A"/>
-        <rect x="394" y="248" width="40" height="16" rx="8" fill="#17171A"/>
-      </svg>
+      <img class="mark" src="img/logo-main.svg" alt="Snap It" />
       <span class="app-word">snap it<span class="pd">.</span></span>
     </a>
 
@@ -1288,15 +1380,19 @@
     <button id="tempo-button" hidden></button>
 
     <div class="top-right">
-      <button id="jam-button" class="tb-jam-pill" title="Jam session">
-        Jam Session
-        <span id="jam-dot" class="jam-dot-pill"></span>
+      <button id="collection-button" class="tb-coll topbar-icon" title="Your collection">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round">
+          <rect x="8" y="3.5" width="12.5" height="15.5" rx="2"/>
+          <path d="M4 7.5v11a2 2 0 002 2h10.5"/>
+        </svg>
+        <span class="coll-label">Collection</span>
       </button>
-      
+
       <button id="hamburger-button" class="tb-hamburger topbar-icon" title="Menu">
         <div class="hl"></div>
         <div class="hl"></div>
         <div class="hl"></div>
+        <span id="jam-dot-menu" class="jam-menu-dot"></span>
       </button>
     </div>
   </header>
@@ -1448,21 +1544,29 @@
 
   </main>
 
+  <!-- Swipe-deck pagination (mobile/tablet only; hidden on desktop via CSS) -->
+  <div id="deck-pager" class="deck-pager" aria-label="Module navigation"></div>
+
   <!-- ================= ROTATION LAYER FOR POPOVERS ================= -->
   <div id="rot-layer" data-rotation="0">
 
   <!-- ================= SIDE DRAWER ================= -->
+  <div id="drawer-scrim" class="drawer-scrim"></div>
   <nav id="side-drawer" class="side-drawer">
     <div class="drawer-header">
       <h3>Controls</h3>
       <button id="close-drawer" class="drawer-close">&times;</button>
     </div>
     <div class="drawer-content">
-      <button id="bpm-chip" class="bpm-chip" title="Drag up/down to change BPM">
-        <span class="bc-cap">BPM</span>
-        <span id="bpm-value" class="seg-row">120</span>
+      <button id="jam-button" class="drawer-btn drawer-jam" title="Jam session">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 8a10 10 0 000 8M8.5 10.5a5 5 0 000 3M19 8a10 10 0 010 8m-3.5-5.5a5 5 0 010 3"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+        </svg>
+        Jam Session
+        <span id="jam-dot" class="jam-dot-pill"></span>
       </button>
-      
+
       <button id="flip-button" class="drawer-btn" title="Rotate Layout">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1470,14 +1574,6 @@
         Rotate Layout
       </button>
 
-      <button id="collection-button" class="drawer-btn" title="Your collection">
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-          <rect x="8" y="3.5" width="12.5" height="15.5" rx="2"/>
-          <path d="M4 7.5v11a2 2 0 002 2h10.5"/>
-        </svg>
-        Collection
-      </button>
-      
       <button id="guide-button" class="drawer-btn" title="Guide">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
         Guide
@@ -1578,6 +1674,10 @@
           <div id="pp-mail" class="pp-mail"></div>
         </div>
       </div>
+      <p id="pp-unverified" class="pp-unverified" style="display:none;">
+        Check your inbox to confirm your email.
+        <button id="pp-resend" class="pp-resend">Resend</button>
+      </p>
       <div class="pp-row">
         <input id="pp-newname" class="jam-input pp-field pp-namefield" placeholder="display name" maxlength="24" />
         <button id="pp-savename" class="hw">Save</button>
@@ -1637,8 +1737,10 @@
        for static hosting like Cloudflare Pages/Workers. Refresh with the copy step
        in DEPLOY.md if you bump versions. -->
   <script src="vendor/Tone.js"></script>
-  <script src="vendor/tf.min.js"></script>
-  <script src="vendor/coco-ssd.min.js"></script>
+  <!-- TensorFlow + COCO-SSD are heavy (~2-3MB eval). They're NOT loaded here so
+       they can't block boot/first paint on low-end devices; Vision injects them
+       on demand the first time the camera scanner starts (see vision.js). -->
+
 
   <!-- App modules. Plain scripts that attach to window; load order matters.
        Jam networking uses the browser's native WebSocket (see network.js) — no

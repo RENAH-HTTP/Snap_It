@@ -13,6 +13,8 @@
 // Deploy:  npx wrangler deploy   (see wrangler.toml + DEPLOY.md)
 // -----------------------------------------------------------------------------
 
+import { handleAuth } from './auth.js';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -20,6 +22,10 @@ export default {
       const room = (url.searchParams.get('room') || 'MAIN').toUpperCase();
       const id = env.JAM_ROOMS.idFromName(room);
       return env.JAM_ROOMS.get(id).fetch(request);
+    }
+    // Cross-device accounts (signup / login / collection sync / email confirm).
+    if (url.pathname.startsWith('/auth/')) {
+      return handleAuth(request, env, url);
     }
     // Everything else is a static asset (app.html, src/…, samples/…).
     return env.ASSETS.fetch(request);

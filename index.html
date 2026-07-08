@@ -33,10 +33,13 @@
       background: var(--cream); border-right: 2.5px solid var(--ink);
     }
     .brand { display: flex; align-items: center; gap: 9px; padding: 4px 2px 8px; }
-    .brand .mark { width: 34px; height: 34px; flex-shrink: 0; }
+    .brand .mark { height: 30px; width: auto; flex-shrink: 0; }
     .brand .word { font-size: 22px; font-weight: 900; letter-spacing: -.04em; }
     .brand .word .pd { color: var(--orange); }
+    .rail-burger { display: none; margin-left: auto; padding: 4px; color: var(--ink); }
 
+    /* wrapper so the nav can collapse into a hamburger dropdown on small screens */
+    .rail-menu { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
     .tiles { display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 0; }
     .tile {
       position: relative; flex: 1; min-height: 54px; border-radius: 14px; padding: 11px 13px;
@@ -222,8 +225,15 @@
     /* ============ MOBILE fallback ============ */
     @media (max-width: 900px) {
       :root { --rail: 0px; }
-      .rail { position: static; width: auto; flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 12px; border-right: 0; border-bottom: 2.5px solid var(--ink); }
-      .brand { flex-basis: 100%; }
+      /* Rail becomes a compact sticky top bar; the nav (tiles + play + chips)
+         collapses behind the hamburger and drops down when it's tapped. */
+      .rail { position: sticky; top: 0; width: auto; flex-direction: row; align-items: center;
+              flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-right: 0;
+              border-bottom: 2.5px solid var(--ink); z-index: 60; }
+      .brand { flex: 1 1 auto; padding: 0; }
+      .rail-burger { display: flex; }
+      .rail-menu { display: none; flex-basis: 100%; width: 100%; flex-direction: column; gap: 10px; padding-top: 4px; }
+      .rail.menu-open .rail-menu { display: flex; }
       .tiles { flex-direction: row; flex-wrap: wrap; flex: 1 1 100%; }
       .tile { flex: 1 1 30%; min-height: 64px; }
       .play-btn { flex: 1 1 100%; }
@@ -235,32 +245,36 @@
       .col2 { grid-template-columns: 1fr; gap: 22px; }
       .ticks { display: none; }
     }
+    @media (max-width: 520px) {
+      .tile { flex-basis: 46%; }
+    }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
   </style>
 </head>
 <body>
 
   <!-- ============ RAIL ============ -->
-  <aside class="rail">
+  <aside class="rail" id="rail">
     <div class="brand">
-      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
-        <path d="M120 256C120 256 180 160 256 160C332 160 392 256 392 256C392 256 332 352 256 352C180 352 120 256 120 256Z" fill="none" stroke="#17171A" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="256" cy="256" r="62" fill="#E67E22"/><circle cx="256" cy="256" r="23" fill="#17171A"/>
-        <rect x="78" y="248" width="40" height="16" rx="8" fill="#17171A"/><rect x="394" y="248" width="40" height="16" rx="8" fill="#17171A"/>
-      </svg>
+      <img class="mark" src="img/logo-main.svg" alt="Snap It" />
       <span class="word">snap it<span class="pd">.</span></span>
+      <button class="rail-burger" id="rail-burger" aria-label="Menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
     </div>
-    <div class="tiles">
-      <button class="tile c0" data-go="1"><span class="n">01</span><span class="arw">&#8599;</span><span class="t">Scan the world</span></button>
-      <button class="tile c1" data-go="2"><span class="n">02</span><span class="arw">&#8599;</span><span class="t">Morph the sound</span></button>
-      <button class="tile c2" data-go="3"><span class="n">03</span><span class="arw">&#8599;</span><span class="t">Sequence it</span></button>
-      <button class="tile c3" data-go="4"><span class="n">04</span><span class="arw">&#8599;</span><span class="t">Jam together</span></button>
-      <button class="tile c4" data-go="5"><span class="n">05</span><span class="arw">&#8599;</span><span class="t">Collect sounds</span></button>
-    </div>
-    <a class="play-btn" href="app.html">Play the app &rarr;</a>
-    <div class="rail-foot">
-      <span class="chip">80 sounds</span>
-      <a class="chip" href="app.html">▶ Play</a>
+    <div class="rail-menu" id="rail-menu">
+      <div class="tiles">
+        <button class="tile c0" data-go="1"><span class="n">01</span><span class="arw">&#8599;</span><span class="t">Scan the world</span></button>
+        <button class="tile c1" data-go="2"><span class="n">02</span><span class="arw">&#8599;</span><span class="t">Morph the sound</span></button>
+        <button class="tile c2" data-go="3"><span class="n">03</span><span class="arw">&#8599;</span><span class="t">Sequence it</span></button>
+        <button class="tile c3" data-go="4"><span class="n">04</span><span class="arw">&#8599;</span><span class="t">Jam together</span></button>
+        <button class="tile c4" data-go="5"><span class="n">05</span><span class="arw">&#8599;</span><span class="t">Collect sounds</span></button>
+      </div>
+      <a class="play-btn" href="app.html">Play the app &rarr;</a>
+      <div class="rail-foot">
+        <span class="chip">80 sounds</span>
+        <a class="chip" href="app.html">▶ Play</a>
+      </div>
     </div>
   </aside>
 
@@ -454,6 +468,26 @@
       const total = track.offsetHeight - stage.offsetHeight;
       window.scrollTo({ top: track.offsetTop + (i+0.5)*seg*total, behavior: 'smooth' });
     }));
+
+    // ---- mobile hamburger: toggle the rail nav dropdown ----
+    (function () {
+      const rail = document.getElementById('rail');
+      const burger = document.getElementById('rail-burger');
+      const menu = document.getElementById('rail-menu');
+      if (!rail || !burger || !menu) return;
+      function setOpen(open) {
+        rail.classList.toggle('menu-open', open);
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      burger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        setOpen(!rail.classList.contains('menu-open'));
+      });
+      // Any nav choice (tile / play / chip) closes the menu again.
+      menu.addEventListener('click', function (e) {
+        if (e.target.closest('[data-go], .play-btn, .chip')) setOpen(false);
+      });
+    })();
     frame();
 
     // ---- interactive pads (WebAudio) ----

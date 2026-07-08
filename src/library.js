@@ -62,9 +62,11 @@ const library = (function () {
     );
   }
 
-  // Save the unlocked list to localStorage.
+  // Save the unlocked list to localStorage, and (when logged in via the backend)
+  // sync it up so the collection follows the player to their other devices.
   function save() {
     localStorage.setItem(storageKey(), JSON.stringify({ unlocked: unlocked }));
+    if (window.Profile && Profile.pushCollection) Profile.pushCollection(unlocked);
     console.log('[library] saved. unlocked is now:', unlocked);
   }
 

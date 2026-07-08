@@ -170,6 +170,28 @@ window.Jam = (() => {
         fire('fx', a.trackId, a.fxName, a.i, f);
         break;
       }
+      case 'fxMorph': {
+        // The XY performance pad. Skip our own echoed frames so a live drag
+        // never rubber-bands back to a stale position.
+        if (a.by && a.by === myId()) break;
+        audioEngine.setFxMorph(a.x, a.y);
+        fire('fxMorph', a.x, a.y);
+        break;
+      }
+      case 'fxBypass': {
+        if (a.by && a.by === myId()) break;
+        audioEngine.fxBypass();
+        fire('fxBypass');
+        break;
+      }
+      case 'snd': {
+        // A track's ADSR/tune changed on another machine — mirror it so the
+        // output machine plays the same envelope. Skip our own echoes.
+        if (a.by && a.by === myId()) break;
+        audioEngine.setTrackSnd(a.trackId, a.snd);
+        fire('snd', a.trackId, a.snd);
+        break;
+      }
       case 'patternLen': {
         const pl = audioEngine.setPatternLen(a.len);
         fire('patternLen', pl);
@@ -267,6 +289,9 @@ window.Jam = (() => {
         fire('bpm', audioEngine.getBpm());
         fire('swing', audioEngine.getSwing());
         fire('key', audioEngine.getKeyTranspose());
+        // Position the XY FX pad to the shared project's live morph.
+        const fm = audioEngine.getFxMorph && audioEngine.getFxMorph();
+        if (fm) { if (fm.dry) fire('fxBypass'); else fire('fxMorph', fm.x, fm.y); }
         applyTransport(!!m.payload.playing);
       } else if (m.type === 'action') {
         applyAction(m.payload);
@@ -290,6 +315,68 @@ window.Jam = (() => {
     }
     applyAction(a);                  // offline & host apply immediately
     if (role === 'host') Network.send('action', a);
+  }
+
+  // The XY FX pad streams many positions a second while dragged. Apply it
+  // locally immediately (responsive cursor + monitoring), but rate-limit the
+  // network frames — leading + trailing, so the FINAL resting spot always lands.
+  let morphPending = null, morphTimer = null, lastMorphSent = 0;
+  const MORPH_MS = 40;
+  function nowMs() { return (typeof performance !== 'undefined') ? performance.now() : Date.now(); }
+  function sendMorphNow(payload) {
+    if (Network.role() !== 'offline') Network.send('action', payload); // host->clients / client->host
+  }
+  function flushMorph() {
+    morphTimer = null;
+    if (!morphPending) return;
+    const p = morphPending; morphPending = null;
+    lastMorphSent = nowMs();
+    sendMorphNow(p);
+  }
+  function queueMorph(payload) {
+    morphPending = payload;
+    const wait = MORPH_MS - (nowMs() - lastMorphSent);
+    if (wait <= 0) flushMorph();
+    else if (!morphTimer) morphTimer = setTimeout(flushMorph, wait);
+  }
+
+  function setFxMorph(x, y) {
+    audioEngine.setFxMorph(x, y);   // immediate, local
+    fire('fxMorph', x, y);
+    if (Network.role() !== 'offline') queueMorph({ kind: 'fxMorph', x: x, y: y, by: myId() });
+  }
+
+  function fxBypass() {
+    audioEngine.fxBypass();
+    fire('fxBypass');
+    morphPending = null;            // a discrete DRY supersedes any pending frame
+    if (Network.role() !== 'offline') sendMorphNow({ kind: 'fxBypass', by: myId() });
+  }
+
+  // Track sound (ADSR/tune) sync. Faders stream many commits/sec while dragged,
+  // so this rate-limits per track (leading + trailing, latest-per-track wins).
+  // NOTE: we DON'T fire('snd') locally — the fader UI already reflects the drag;
+  // re-rendering the editor mid-drag would kill the pointer capture. Only remote
+  // applies (applyAction) fire it.
+  let sndPending = {}, sndTimer = null, lastSndSent = 0;
+  const SND_MS = 60;
+  function flushSnd() {
+    sndTimer = null;
+    const ids = Object.keys(sndPending);
+    if (!ids.length) return;
+    lastSndSent = nowMs();
+    ids.forEach(function (id) { if (Network.role() !== 'offline') Network.send('action', sndPending[id]); });
+    sndPending = {};
+  }
+  function queueSnd(payload) {
+    sndPending[payload.trackId] = payload;
+    const wait = SND_MS - (nowMs() - lastSndSent);
+    if (wait <= 0) flushSnd();
+    else if (!sndTimer) sndTimer = setTimeout(flushSnd, wait);
+  }
+  function setTrackSnd(trackId, snd) {
+    audioEngine.setTrackSnd(trackId, snd);   // apply locally now
+    if (Network.role() !== 'offline') queueSnd({ kind: 'snd', trackId: trackId, snd: snd, by: myId() });
   }
 
   function dispatchStructural(p) {
@@ -429,6 +516,9 @@ window.Jam = (() => {
     setStepLen: setStepLen,
     setStepVel: setStepVel,
     setStepFx: setStepFx,
+    setFxMorph: setFxMorph,
+    fxBypass: fxBypass,
+    setTrackSnd: setTrackSnd,
     setMute: setMute,
     setVolume: setVolume,
     setBpm: setBpm,
