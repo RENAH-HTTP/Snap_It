@@ -125,12 +125,9 @@
     }
     .tb-hamburger.jam-active .jam-menu-dot { display: block; }
 
-    .topbar-icon {
-      transition: transform 0.3s ease-in-out;
-    }
-    body[data-rotation="90"] .topbar-icon { transform: rotate(90deg); }
-    body[data-rotation="180"] .topbar-icon { transform: rotate(180deg); }
-    body[data-rotation="270"] .topbar-icon { transform: rotate(270deg); }
+    /* Flip rotates the MODULES only — the topbar (Collection, transport,
+       hamburger) always stays upright in screen orientation, and so does
+       swiping; the deck pager works in screen space regardless of rotation. */
 
     /* ================= SIDE DRAWER ================= */
     .side-drawer {
@@ -236,7 +233,11 @@
     }
     body[data-rotation="90"] .panel,
     body[data-rotation="270"] .panel {
-      width: calc(100dvh - 90px);
+      /* Sized so the ROTATED box exactly fills one deck page on any screen:
+         layout width becomes visual height (deck height minus the page's
+         14px top / 56px bottom padding) and layout height becomes visual
+         width (viewport minus the 16px page side padding each side). */
+      width: calc(100dvh - var(--topbar-h) - 70px);
       height: calc(100dvw - 32px);
       /* Don't let the wrapper (sized to the rotated box) shrink the panel below
          its own width — that would collapse a flipped module to a small square. */
@@ -288,17 +289,45 @@
         display: flex; flex-direction: row;
         grid-template-areas: none; gap: 0; padding: 0; max-width: none;
         height: calc(100dvh - var(--topbar-h));
-        overflow-x: auto; overflow-y: hidden;
-        scroll-snap-type: x mandatory; scroll-behavior: smooth;
-        -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+        /* One page per swipe, like a native tab pager: the deck never
+           free-scrolls on its own — the JS gesture pager (ui.js
+           setupModulePager) drags scrollLeft with the finger and snaps
+           exactly one page on release. pan-y keeps vertical scrolling
+           inside a page native. */
+        overflow: hidden;
+        touch-action: pan-y;
+        overscroll-behavior-x: contain;
         scrollbar-width: none;
       }
       .deck::-webkit-scrollbar { display: none; }
       .panel-rot-wrapper {
-        flex: 0 0 100%; width: 100vw; min-width: 100vw;
-        scroll-snap-align: start; scroll-snap-stop: always;
-        overflow: auto; align-items: flex-start;
+        /* 100% (not 100vw) — must equal the deck's clientWidth exactly or
+           the page positions drift and swipes land between pages. */
+        flex: 0 0 100%; width: 100%; min-width: 100%;
+        overflow-x: hidden; overflow-y: auto;
+        overscroll-behavior: contain;
+        align-items: stretch;
         padding: 14px 16px calc(56px + var(--safe-b));
+      }
+      /* Each module fills its whole page — no dead space under short panels.
+         (Rotated 90/270 layouts size the panel explicitly, so skip those.) */
+      .panel { min-height: 100%; }
+      /* Flipped modules: rotate about the top-left with a compensating
+         translate so the rotated box hangs DOWN from the page origin —
+         always fully on screen, and a module longer than the screen (the
+         sequencer runs as long as its beats) scrolls vertically, matching
+         the phone's real orientation. Swiping stays screen-space. */
+      body[data-rotation="90"] .panel-rot-wrapper,
+      body[data-rotation="270"] .panel-rot-wrapper { display: block; }
+      body[data-rotation="90"] .panel,
+      body[data-rotation="270"] .panel { min-height: 0; }
+      body[data-rotation="90"] .panel {
+        transform-origin: top left;
+        transform: rotate(90deg) translateY(-100%);
+      }
+      body[data-rotation="270"] .panel {
+        transform-origin: top left;
+        transform: rotate(-90deg) translateX(-100%);
       }
       /* Pager dots — tap to jump, and they track the current page. */
       .deck-pager {

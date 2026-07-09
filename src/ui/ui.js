@@ -91,9 +91,16 @@ const ui = (function () {
     if (eye) eye.classList.toggle('eye-open', !!live);
   }
 
-  // Swipe-deck pager (phone/tablet). The deck becomes a horizontal scroll-snap
-  // strip in CSS; this builds the tap-dots and keeps them in sync with the
-  // current page. On desktop the dots are hidden and this is a harmless no-op.
+  // True while the swipe pager has claimed the current touch as a horizontal
+  // page-swipe. Vertical-drag controls consult it (via touchDragGate.moveOK /
+  // attachDragValue) and go inert so a page-swipe never tweaks their value.
+  let pagerOwnsGesture = false;
+
+  // Swipe-deck pager (phone/tablet). Native-app tab feel: the page follows the
+  // finger while dragging and a release snaps EXACTLY one page forward or back
+  // (distance or flick velocity), never free-scrolling across several modules.
+  // CSS sets the deck to overflow:hidden, so this pager is the only thing that
+  // moves it. On desktop (fine pointer) the deck is a grid and this is a no-op.
   function setupModulePager() {
     const deck = document.querySelector('.deck');
     const pager = document.getElementById('deck-pager');
@@ -105,6 +112,9 @@ const ui = (function () {
       'p-seq': 'Sequencer', 'p-xy': 'FX Pad',
     };
     const pages = Array.prototype.slice.call(deck.querySelectorAll(':scope > .panel-rot-wrapper'));
+    const coarse = window.matchMedia('(pointer: coarse)');
+    let current = 0;
+
     pager.innerHTML = '';
     const dots = pages.map(function (page, idx) {
       const panel = page.querySelector('.panel');
@@ -114,23 +124,105 @@ const ui = (function () {
       dot.className = 'deck-dot' + (idx === 0 ? ' active' : '');
       dot.title = label;
       dot.setAttribute('aria-label', label);
-      dot.addEventListener('click', function () {
-        deck.scrollTo({ left: idx * deck.clientWidth, behavior: 'smooth' });
-      });
+      dot.addEventListener('click', function () { goTo(idx); });
       pager.appendChild(dot);
       return dot;
     });
 
-    let raf = null;
-    function syncActive() {
-      raf = null;
-      const w = deck.clientWidth || 1;
-      const idx = Math.max(0, Math.min(dots.length - 1, Math.round(deck.scrollLeft / w)));
+    function pageW() { return deck.clientWidth || 1; }
+    function clampIdx(i) { return Math.max(0, Math.min(pages.length - 1, i)); }
+    function setDots(idx) {
       dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
     }
+
+    // Ease scrollLeft to a page (rAF — scrollTo({smooth}) is unreliable on an
+    // overflow:hidden container across mobile browsers).
+    let anim = null;
+    function goTo(idx) {
+      idx = clampIdx(idx);
+      current = idx;
+      setDots(idx);
+      if (anim) cancelAnimationFrame(anim);
+      const from = deck.scrollLeft, to = idx * pageW(), t0 = performance.now();
+      const DUR = 280;
+      function tick(t) {
+        const p = Math.min(1, (t - t0) / DUR);
+        deck.scrollLeft = from + (to - from) * (1 - Math.pow(1 - p, 3));
+        anim = p < 1 ? requestAnimationFrame(tick) : null;
+      }
+      anim = requestAnimationFrame(tick);
+    }
+
+    // Keep the page aligned when the phone rotates / keyboard resizes.
+    window.addEventListener('resize', function () {
+      if (coarse.matches) deck.scrollLeft = current * pageW();
+    });
+
+    // Something else (e.g. applyTrackFocus's scrollIntoView) moved the deck —
+    // adopt whatever page it landed on so the dots stay honest.
     deck.addEventListener('scroll', function () {
-      if (!raf) raf = requestAnimationFrame(syncActive);
+      if (drag || anim) return;
+      const idx = clampIdx(Math.round(deck.scrollLeft / pageW()));
+      if (idx !== current) { current = idx; setDots(idx); }
     }, { passive: true });
+
+    // Only controls that own HORIZONTAL gestures block paging (the XY pad is
+    // 2-D, seq-scroll pans sideways, hslider drags ew). Vertical-drag controls
+    // (faders, mixer crayons, tempo chips) lose to a horizontal swipe instead —
+    // pagerOwnsGesture flips and their moveOK gate goes dead, like a native
+    // pager cancelling a child's touch.
+    const OWN_DRAG = '.xy-pad, .seq-scroll, .hslider, input, select, textarea';
+
+    let drag = null;
+    deck.addEventListener('touchstart', function (e) {
+      drag = null;
+      pagerOwnsGesture = false;
+      if (!coarse.matches || e.touches.length !== 1) return;
+      if (e.target.closest(OWN_DRAG)) return;
+      if (e.target.closest('.module-fullscreen')) return;
+      // The mixer row only owns the gesture when it genuinely overflows and
+      // can scroll sideways itself.
+      const mixArea = e.target.closest('.mix-area');
+      if (mixArea && mixArea.scrollWidth > mixArea.clientWidth + 1) return;
+      if (anim) { cancelAnimationFrame(anim); anim = null; }
+      drag = {
+        x: e.touches[0].clientX, y: e.touches[0].clientY,
+        startScroll: deck.scrollLeft, axis: null,
+        lastX: e.touches[0].clientX, lastT: performance.now(), vx: 0,
+      };
+    }, { passive: true });
+
+    deck.addEventListener('touchmove', function (e) {
+      if (!drag) return;
+      const x = e.touches[0].clientX, y = e.touches[0].clientY;
+      const dx = x - drag.x, dy = y - drag.y;
+      if (!drag.axis) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // undecided yet
+        drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (drag.axis === 'y') { drag = null; return; }   // vertical: page scrolls itself
+        pagerOwnsGesture = true; // horizontal: mute vertical-drag controls
+      }
+      e.preventDefault(); // horizontal: the pager owns this gesture
+      deck.scrollLeft = Math.max(0, Math.min((pages.length - 1) * pageW(),
+        drag.startScroll - dx));
+      const now = performance.now();
+      if (now - drag.lastT > 0) drag.vx = (x - drag.lastX) / (now - drag.lastT);
+      drag.lastX = x; drag.lastT = now;
+    }, { passive: false });
+
+    function endDrag() {
+      pagerOwnsGesture = false;
+      if (!drag || drag.axis !== 'x') { drag = null; return; }
+      const moved = deck.scrollLeft - drag.startScroll; // >0 means toward next
+      const FLICK = 0.35;                               // px/ms
+      let idx = current;
+      if (moved > pageW() * 0.22 || drag.vx < -FLICK) idx = current + 1;
+      else if (moved < -pageW() * 0.22 || drag.vx > FLICK) idx = current - 1;
+      drag = null;
+      goTo(idx);
+    }
+    deck.addEventListener('touchend', endDrag);
+    deck.addEventListener('touchcancel', endDrag);
   }
 
   function setupModuleControls() {
@@ -2137,9 +2229,11 @@ const ui = (function () {
         if (isLandscape) {
           // The sequencer runs AS LONG AS its beats so the whole pattern scrolls
           // in landscape; other modules keep their one-screenful CSS width.
+          // The page wrapper is NEVER resized — in the swipe deck each page
+          // stays exactly one screen and the rotated overhang scrolls inside it.
           if (panel.classList.contains('p-seq')) updateFlipSeqWidth();
-          wrapper.style.width = panel.offsetHeight + 'px';
-          wrapper.style.height = panel.offsetWidth + 'px';
+          wrapper.style.width = '';
+          wrapper.style.height = '';
         } else {
           panel.style.width = '';
           wrapper.style.width = '';
@@ -2309,7 +2403,11 @@ const ui = (function () {
     if (e.cancelable) e.preventDefault();
     return {
       engaged: true,
-      moveOK: function (ev) { if (ev.cancelable) ev.preventDefault(); return true; },
+      moveOK: function (ev) {
+        if (pagerOwnsGesture) return false; // swipe pager took this gesture
+        if (ev.cancelable) ev.preventDefault();
+        return true;
+      },
       end: function () {},
     };
   }
@@ -2325,6 +2423,10 @@ const ui = (function () {
       const startV = get();
       let moved = false;
       function move(ev) {
+        if (pagerOwnsGesture) {           // swipe pager took this gesture —
+          if (moved) { apply(startV); moved = false; } // undo any stray nudge
+          return;
+        }
         if (ev.cancelable) ev.preventDefault();
         const d = Math.round((startY - ev.clientY) / pxPerStep);
         if (d !== 0) moved = true;

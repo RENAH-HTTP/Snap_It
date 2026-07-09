@@ -6,13 +6,15 @@
     "start": "node server/jam-server.js",
     "jam": "node server/jam-server.js",
     "serve": "serve .",
-    "build": "node tools/build.js"
+    "build": "node tools/build.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "author": "SoundHunter Team",
   "license": "MIT",
   "devDependencies": {
     "serve": "^14.2.6",
-    "wrangler": "^3.80.0"
+    "wrangler": "^4.107.1"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

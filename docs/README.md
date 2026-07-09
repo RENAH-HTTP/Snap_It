@@ -95,9 +95,7 @@ Snap_It/
 │   │   └── cameraStub.js     # manual-scan fallback                       (window.cameraStub)
 │   ├── data/
 │   │   ├── library.js        # loads objectSampleMap, tracks unlocks      (window.library)
-│   │   ├── profile.js        # accounts (backend + device-local fallback) (window.Profile)
-│   │   ├── collection.js     # (experimental — not loaded by app.html)
-│   │   └── firebase.js       # (experimental — not loaded by app.html)
+│   │   └── profile.js        # accounts (backend + device-local fallback) (window.Profile)
 │   └── multiplayer/
 │       ├── network.js        # native-WebSocket transport to /jam         (window.Network)
 │       └── jam.js            # jam session state/sync                      (window.Jam)
