@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light" />
-  <meta name="theme-color" content="#F3EEE3" />
+  <meta name="theme-color" content="#EDF6EC" />
   <title>Snap It — turn the world into a drum machine</title>
   <meta name="description" content="Snap It scans real objects with your camera, unlocks their drum sound, and lets you sequence beats and jam with friends. A tactile browser instrument." />
   <link rel="manifest" href="manifest.json" />
@@ -141,7 +141,7 @@
         <section class="scene" data-scene="4" style="--accent:var(--lime)">
           <div class="col2">
             <div class="art"><div class="jam">
-              <svg viewBox="0 0 200 150" width="70%"><g fill="none" stroke="#17171A" stroke-width="4" stroke-linecap="round"><circle cx="55" cy="52" r="18"/><circle cx="145" cy="52" r="18"/><circle cx="100" cy="106" r="18"/><path d="M70 60 L130 60 M62 66 L92 98 M138 66 L108 98"/></g><g fill="#E8503A" stroke="#17171A" stroke-width="3"><circle cx="55" cy="52" r="7"/><circle cx="145" cy="52" r="7"/><circle cx="100" cy="106" r="7"/></g></svg>
+              <svg viewBox="0 0 200 150" width="70%"><g fill="none" stroke="#3D5964" stroke-width="4" stroke-linecap="round"><circle cx="55" cy="52" r="18"/><circle cx="145" cy="52" r="18"/><circle cx="100" cy="106" r="18"/><path d="M70 60 L130 60 M62 66 L92 98 M138 66 L108 98"/></g><g fill="#E8503A" stroke="#3D5964" stroke-width="3"><circle cx="55" cy="52" r="7"/><circle cx="145" cy="52" r="7"/><circle cx="100" cy="106" r="7"/></g></svg>
             </div></div>
             <div>
               <h2>Play together.</h2>
@@ -296,7 +296,7 @@
 
     // ---- pixel-art trio (eye / wave / note) ----
     const ART={ eye:["00000000000","00011111000","00111111100","01110001110","11100100111","11101110111","11100100111","01110001110","00111111100","00011111000","00000000000"], wave:["00000100000","00000100000","00010101000","00010101000","01010101010","01010101011","11010101010","01010101000","00010101000","00000100000","00000100000"], note:["00000011100","00000011100","00000010100","00000010100","00000010100","00011010100","00111010000","01111010000","01110000000","00100000000","00000000000"] };
-    document.querySelectorAll('.pixart').forEach(el=>{ const bmp=ART[el.getAttribute('data-art')]; el.style.gridTemplateColumns='repeat('+bmp[0].length+',1fr)'; bmp.forEach(row=>{ for(const ch of row){ const i=document.createElement('i'); i.style.background = ch==='1'?'#17171A':'transparent'; el.appendChild(i); } }); });
+    document.querySelectorAll('.pixart').forEach(el=>{ const bmp=ART[el.getAttribute('data-art')]; el.style.gridTemplateColumns='repeat('+bmp[0].length+',1fr)'; bmp.forEach(row=>{ for(const ch of row){ const i=document.createElement('i'); i.style.background = ch==='1'?'#3D5964':'transparent'; el.appendChild(i); } }); });
 
     // ---- footer scattered pixels ----
     const fg=document.querySelector('.foot .fgrid');

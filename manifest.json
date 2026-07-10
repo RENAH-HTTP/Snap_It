@@ -4,8 +4,8 @@
   "description": "Scan physical objects to unlock drum samples, build a library, and make beats in a step sequencer.",
   "start_url": "./app.html",
   "display": "standalone",
-  "background_color": "#F4B015",
-  "theme_color": "#F4B015",
+  "background_color": "#F2E9E0",
+  "theme_color": "#F2E9E0",
   "orientation": "portrait-primary",
   "icons": [
     {

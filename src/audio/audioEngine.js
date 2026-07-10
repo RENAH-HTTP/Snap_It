@@ -2,7 +2,9 @@
 // -----------------------------------------------------------------------------
 // Everything that makes sound. Built on Tone.js (loaded as the global `Tone`
 // in index.html). It does three things:
-//   1. Loads every sample in the map into a Tone.Player (one player per sample).
+//   1. Streams every sample in the map into a decoded-buffer cache (a few
+//      downloads at a time; whatever the user touches jumps the queue). Each
+//      hit then plays on its own throwaway buffer source.
 //   2. Owns the step sequencer: a list of tracks, each with 16 on/off steps.
 //   3. Drives playback with Tone.Transport + a single Tone.Sequence loop.
 //
@@ -39,8 +41,13 @@ const audioEngine = (function () {
     return o;
   }
 
-  const players = {};       // objectType -> Tone.Player
-  const envs = {};          // objectType -> Tone.AmplitudeEnvelope (real ADSR)
+  const buffers = {};       // objectType -> Tone.ToneAudioBuffer (decoded sample)
+  const sampleUrls = {};    // objectType -> URL, registered at init, fetched on demand
+  const loadWaiters = {};   // objectType -> [fn] run once that buffer lands
+  const loadQueue = [];     // objectTypes waiting for a download slot
+  let loadsInFlight = 0;    // decodes currently running
+  const MAX_PARALLEL_LOADS = 4; // a cold start used to fire ~80 fetch+decodes at
+                                // once, which froze the page for seconds
   const settings = {};      // objectType -> { attack, decay, sustain, release, cents }
   const tracks = [];        // array of track objects (see header)
   let nextTrackId = 1;      // simple incrementing id
@@ -57,11 +64,17 @@ const audioEngine = (function () {
 
   // ---- setup -----------------------------------------------------------------
 
-  // Load every sample referenced in the map into its own Tone.Player.
-  // Missing WAVs don't crash anything — that player just stays "not loaded"
-  // and is skipped at playback time (the user is told to drop WAVs in /samples).
+  // Register every sample in the map and start trickling them in. Missing WAVs
+  // don't crash anything — that buffer just stays "not loaded" and is skipped
+  // at playback time (the user is told to drop WAVs in /samples).
   async function init() {
     const map = library.getAllSampleInfo();
+
+    // Tone schedules audio events from the main thread, and heavy UI work (the
+    // object-detection model especially) can stall it past the default 0.1s
+    // window — heard as random crackles and dropped steps. A little more
+    // lookahead rides those stalls out.
+    Tone.getContext().lookAhead = 0.15;
 
     // Master FX rack, performed live from the XY morph pad. Chain:
     //   every sample -> filter -> drive -> crusher -> echo -> reverb -> out.
@@ -89,39 +102,15 @@ const audioEngine = (function () {
     Object.keys(map).forEach(function (objectType) {
       // encodeURIComponent so filenames with '#' (e.g. "..._D#.wav") aren't cut
       // at the fragment marker when fetched as a URL.
-      const url = 'samples/' + encodeURIComponent(map[objectType].sampleFile);
+      sampleUrls[objectType] = 'samples/' + encodeURIComponent(map[objectType].sampleFile);
 
       // Per-sample defaults. The envelope basically passes the sample through
       // (instant attack, full sustain) until the user shapes it on the card.
       settings[objectType] = { attack: 0.005, decay: 0.20, sustain: 1.0, release: 0.30, cents: 0 };
 
-      // player -> amplitude envelope -> FX bus, so ADSR actually shapes it.
-      // The envelope's gain sits at 0 until triggerAttackRelease opens it, so a
-      // pad with sustain pulled to 0 is genuinely silent.
-      const env = new Tone.AmplitudeEnvelope({
-        attack: settings[objectType].attack,
-        decay: settings[objectType].decay,
-        sustain: settings[objectType].sustain,
-        release: settings[objectType].release,
-      });
-      env.connect(fxChain.filter);
-      envs[objectType] = env;
-
-      const player = new Tone.Player({
-        url: url,
-        onload: function () {
-          console.log('[audioEngine] loaded', url);
-          // Let the UI know it can now draw this sample's waveform.
-          if (sampleLoadedCb) sampleLoadedCb(objectType);
-        },
-        onerror: function () {
-          console.warn('[audioEngine] missing sample:', url,
-            '- drop the WAV into /samples to hear it');
-        },
-      });
-      player.connect(env);
-      players[objectType] = player;
+      loadQueue.push(objectType);
     });
+    pumpLoads();
 
     // Tap the master output for the sequencer oscilloscope. The analyser only
     // reads the signal (it isn't routed onward), so it never affects playback.
@@ -131,7 +120,7 @@ const audioEngine = (function () {
     buildSequence();
     Tone.getTransport().bpm.value = 120;
 
-    console.log('[audioEngine] init done. players:', Object.keys(players).length);
+    console.log('[audioEngine] init done. samples registered:', Object.keys(sampleUrls).length);
   }
 
   // Build the 16-step loop. The Sequence fires its callback once per 16th note,
@@ -190,14 +179,127 @@ const audioEngine = (function () {
     return Math.pow(2, cents / 1200);
   }
 
+  // ---- sample loading --------------------------------------------------------
+  // Samples download a few at a time instead of all at once, and anything the
+  // user actually plays jumps to the front of the queue.
+
+  function isLoaded(key) {
+    const b = buffers[key];
+    return !!(b && b.loaded);
+  }
+
+  // Ask for a sample's buffer. `cb` (optional) runs once the buffer is ready —
+  // immediately if it already is.
+  function ensureLoaded(key, jumpQueue, cb) {
+    if (!sampleUrls[key]) return;
+    if (isLoaded(key)) { if (cb) cb(); return; }
+    if (cb) (loadWaiters[key] = loadWaiters[key] || []).push(cb);
+    if (buffers[key]) return; // already downloading (or known missing)
+    const qi = loadQueue.indexOf(key);
+    if (qi === -1) {
+      loadQueue.push(key);
+    } else if (jumpQueue && qi > 0) {
+      loadQueue.splice(qi, 1);
+      loadQueue.unshift(key);
+    }
+    pumpLoads();
+  }
+
+  function pumpLoads() {
+    while (loadsInFlight < MAX_PARALLEL_LOADS && loadQueue.length) {
+      (function (key) {
+        loadsInFlight++;
+        buffers[key] = new Tone.ToneAudioBuffer(
+          sampleUrls[key],
+          function () {
+            loadsInFlight--;
+            const waiters = loadWaiters[key] || [];
+            delete loadWaiters[key];
+            waiters.forEach(function (fn) { try { fn(); } catch (e) {} });
+            // Let the UI know it can now draw this sample's waveform.
+            if (sampleLoadedCb) sampleLoadedCb(key);
+            pumpLoads();
+          },
+          function () {
+            // Missing WAV: keep the dead buffer around so we never re-fetch it.
+            loadsInFlight--;
+            delete loadWaiters[key];
+            console.warn('[audioEngine] missing sample:', sampleUrls[key],
+              '- drop the WAV into /samples to hear it');
+            pumpLoads();
+          }
+        );
+      })(loadQueue.shift());
+    }
+  }
+
   // Pick a random loaded sample key (used by the "Mystery Hit" — you never
   // know which sound you'll get). Excludes the mystery entry itself.
   function pickRandomLoadedKey() {
-    const keys = Object.keys(players).filter(function (k) {
-      return k !== '_default' && players[k] && players[k].loaded;
+    const keys = Object.keys(buffers).filter(function (k) {
+      return k !== '_default' && isLoaded(k);
     });
     if (!keys.length) return null;
     return keys[Math.floor(Math.random() * keys.length)];
+  }
+
+  // ---- voices ------------------------------------------------------------------
+  // One hit = one throwaway buffer source AND its own amplitude envelope. Giving
+  // every hit its own envelope is what keeps levels honest: a single shared
+  // envelope (one per track / per sample) was retriggered by each note, so a note
+  // that landed while the previous one still held the envelope near full skipped
+  // its own attack ramp and hit noticeably LOUDER than an isolated note — the
+  // "the second of two close notes is randomly louder" bug — and, for the same
+  // reason, closely-spaced notes barely honoured their per-step velocity. A
+  // per-voice envelope always attacks from silence, so a note's level depends only
+  // on its velocity, never on how recently the previous note played.
+  //
+  // Per-hit pitch/level also can't retune or cut a note already sounding (the old
+  // shared-Player design bent tails and raced on stop()/start()). `chokeId` names
+  // a voice slot: a new hit there fades the previous voice out over a few ms
+  // (drum-machine mono), so voices never pile up and CPU stays bounded.
+  const activeVoices = {}; // chokeId -> { src, env }
+
+  // Fire one voice: build its envelope + buffer source, wire src -> env -> dest,
+  // trigger the ADSR from silence, and schedule the stop. `adsr` is the sound
+  // shaping ({attack,decay,sustain,release}); `hold` is how long the note is held
+  // before it releases; `gain` (0..1) is the level, carried as envelope velocity
+  // so the mix never rides a shared volume node.
+  function fireVoice(key, dest, time, rate, loop, hold, adsr, gain, chokeId) {
+    const buf = buffers[key];
+    if (!buf || !buf.loaded) return;
+    const prev = activeVoices[chokeId];
+    if (prev) { try { prev.src.stop(time); } catch (e) {} }
+
+    // Ramp times are floored to a tiny value: a Tone.Envelope with a 0-length
+    // decay skips the ramp and stays pinned at full level, which made "all faders
+    // at 0" play the whole sample. A ~1ms floor forces the ramp so sustain: 0
+    // genuinely closes the sound to silence.
+    const env = new Tone.AmplitudeEnvelope({
+      attack:  Math.max(0.001, +adsr.attack  || 0),
+      decay:   Math.max(0.001, +adsr.decay   || 0),
+      sustain: Math.max(0, Math.min(1, adsr.sustain == null ? 1 : +adsr.sustain)),
+      release: Math.max(0.001, +adsr.release || 0),
+    });
+    env.connect(dest);
+
+    // NB: ToneBufferSource takes the buffer under the `url` option key.
+    const src = new Tone.ToneBufferSource({ url: buf, playbackRate: rate, fadeOut: 0.008 });
+    src.connect(env);
+    src.loop = !!loop;
+    src.onended = function () {
+      if (activeVoices[chokeId] && activeVoices[chokeId].src === src) delete activeVoices[chokeId];
+      try { src.dispose(); } catch (e) {}
+      try { env.dispose(); } catch (e) {}
+    };
+    activeVoices[chokeId] = { src: src, env: env };
+
+    env.triggerAttackRelease(hold, time, Math.max(0.0001, gain == null ? 1 : gain));
+    src.start(time);
+    // Keep the source alive through the release tail; a one-shot shorter than the
+    // gate ends (and disposes) on its own sooner, which is fine — it's silent by
+    // then. release is floored above, so this is always a real future time.
+    src.stop(time + hold + Math.max(0.001, +adsr.release || 0) + 0.06);
   }
 
   // Fire a sample once with a given sound shaping, plus any extra pitch (cents)
@@ -212,68 +314,55 @@ const audioEngine = (function () {
       const r = pickRandomLoadedKey();
       if (r) key = r;
     }
-    const player = players[key];
-    const env = envs[key];
+    if (!isLoaded(key)) { ensureLoaded(key, true); return; }
+
     const eff = snd || settings[key] || {};
-    if (!player || !player.loaded) return;
 
     // Use an explicit time so rapid retriggers always advance on the clock.
     const t = (time === undefined) ? Tone.now() : time;
 
-    // Apply this hit's ADSR to the (shared) envelope node just before firing.
-    // Ramp times are floored to a tiny value: a Tone.Envelope with a 0-length
-    // decay skips the ramp and stays pinned at full level, which made "all
-    // faders at 0" play the whole sample. A ~1ms floor forces the ramp so
-    // sustain: 0 genuinely closes the sound to silence.
-    if (env) {
-      env.attack  = Math.max(0.001, +eff.attack  || 0);
-      env.decay   = Math.max(0.001, +eff.decay   || 0);
-      env.sustain = Math.max(0, Math.min(1, eff.sustain == null ? 1 : +eff.sustain));
-      env.release = Math.max(0.001, +eff.release  || 0);
-    }
-
     // KEY transpose shifts every hit globally, on top of tune + step pitch.
     const cents = (eff.cents || 0) + (extraCents || 0) + keyTranspose * 100;
-    player.playbackRate = centsToRate(cents);
-    player.volume.value = Tone.gainToDb(gain == null ? 1 : Math.max(0.0001, gain));
+    const rate = centsToRate(cents);
 
     // How long to hold the note: the sample's own length, or an explicit gate
-    // (the per-step "note hold") when the sequencer passes one.
-    const sampleDur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
+    // (the per-step "note hold") when the sequencer passes one. If the gate is
+    // longer than the sample, the voice loops so the note sustains throughout.
+    const sampleDur = Math.max(0.02, (buffers[key].duration || 0.2) / rate);
     const hold = gateSec ? Math.max(0.02, gateSec) : sampleDur;
-    // triggerAttackRelease retriggers cleanly on its own (it cancels and holds
-    // internally), so the ADSR re-shapes every hit — no manual cancel needed.
-    if (env) env.triggerAttackRelease(hold, t);
-
-    // If the gate is longer than the sample, loop it so the note sustains for
-    // the whole hold; otherwise play the one-shot through once.
     const wantLoop = !!gateSec && gateSec > sampleDur * 1.05;
-    try { player.loop = wantLoop; } catch (e) {}
 
-    // Stop any current playback then start fresh. stop() throws if not playing,
-    // start() throws if already started — both are fine to ignore.
-    try { player.stop(t); } catch (e) {}
-    try { player.start(t); } catch (e) {}
-    // Schedule the note off at the end of its gate (covers the looped case).
-    if (gateSec) { try { player.stop(t + hold + 0.02); } catch (e) {} }
+    // Preview / mystery / no-per-track-voice path routes straight into the master
+    // rack (no per-track insert FX).
+    fireVoice(key, fxChain.filter, t, rate, wantLoop, hold, eff, gain, 'p:' + key);
   }
 
   // ---- per-track voice + insert FX (the "pro" per-track FX sends) -------------
-  // Each sequencer track gets its OWN envelope and a small insert-FX chain, tapped
-  // off the shared sample player and feeding the master rack:
-  //     player ─┬─ (shared env, for preview)
-  //             └─ track.env → filter → drive → crush → delay → master rack → out
-  // It rests fully transparent (filter wide open, effects dry), so a track sounds
-  // exactly as before until its FX lane is drawn. Reverb stays on the master XY
-  // pad — one reverb per track would be needlessly heavy. Mystery ("_default")
-  // tracks fall back to the shared path (no per-track FX).
+  // Each sequencer track gets its OWN routing bus (a plain gain node) feeding the
+  // master rack:
+  //     voice(+env) → track.bus → [filter → drive → crush → delay → reverb] → master rack
+  // The per-hit amplitude envelope lives on the VOICE now (see fireVoice), not on
+  // the bus, so overlapping notes on one track each attack from silence. The
+  // bracketed insert chain is built LAZILY, on the first non-zero FX-lane value.
+  // Eager chains (a BitCrusher worklet + reverb + delay per row) kept the audio
+  // thread hot even when every lane was dry — with a handful of tracks that alone
+  // starved playback into crackles. Until then the bus connects straight to the
+  // master rack. Mystery ("_default") tracks use the shared path.
 
   function buildTrackAudio(track) {
     const key = library.resolveKey(track.objectType);
     if (key === '_default') return;
-    const player = players[key];
-    if (!player) return;
-    const env = new Tone.AmplitudeEnvelope({ attack: 0.005, decay: 0.2, sustain: 1, release: 0.3 });
+    ensureLoaded(key, true); // the row is about to be played — front of the queue
+    const bus = new Tone.Gain(1);
+    bus.connect(fxChain.filter);
+    track.bus = bus;
+    track.fx = null;      // built on first use, see ensureTrackFx
+    track.lastFx = null;  // last applied weights, so steps only ramp on change
+  }
+
+  // Build the insert chain the first time an FX lane actually asks for it.
+  function ensureTrackFx(track) {
+    if (track.fx || !track.bus) return;
     const fx = {
       filter: new Tone.Filter(18000, 'lowpass'),
       drive:  new Tone.Distortion(0.7),
@@ -286,27 +375,22 @@ const audioEngine = (function () {
     fx.crush.wet.value = 0;
     fx.delay.wet.value = 0;
     fx.reverb.wet.value = 0;
-    env.chain(fx.filter, fx.drive, fx.crush, fx.delay, fx.reverb, fxChain.filter);
-    player.connect(env); // fan-out; the shared env stays wired for preview
-    track.env = env;
+    try { track.bus.disconnect(); } catch (e) {}
+    track.bus.chain(fx.filter, fx.drive, fx.crush, fx.delay, fx.reverb, fxChain.filter);
     track.fx = fx;
   }
 
   function disposeTrackAudio(track) {
-    const key = library.resolveKey(track.objectType);
-    try { if (track.env && players[key]) players[key].disconnect(track.env); } catch (e) {}
-    try { if (track.env) track.env.dispose(); } catch (e) {}
+    try { if (track.bus) track.bus.dispose(); } catch (e) {}
     if (track.fx) Object.keys(track.fx).forEach(function (k) { try { track.fx[k].dispose(); } catch (e) {} });
-    track.env = null;
+    track.bus = null;
     track.fx = null;
   }
 
   // Apply the track's chosen effects per step at their weights (0..1); everything else stays dry.
   function applyAllTrackFx(track, step) {
-    const fx = track.fx;
-    if (!fx) return;
     const sf = track.stepFx || emptyStepFx();
-    
+
     // Fallbacks to 0 if a lane isn't found
     const wDrive = sf.drive && sf.drive[step] != null ? sf.drive[step] : 0;
     const wCrush = sf.crush && sf.crush[step] != null ? sf.crush[step] : 0;
@@ -314,11 +398,22 @@ const audioEngine = (function () {
     const wReverb = sf.reverb && sf.reverb[step] != null ? sf.reverb[step] : 0;
     const wFilter = sf.filter && sf.filter[step] != null ? sf.filter[step] : 0;
 
-    fx.drive.wet.rampTo(wDrive * 0.9, 0.02);
-    fx.crush.wet.rampTo(wCrush * 0.85, 0.02);
-    fx.delay.wet.rampTo(wDelay * 0.6, 0.02);
-    fx.reverb.wet.rampTo(wReverb * 0.7, 0.02);
-    fx.filter.frequency.rampTo(18000 * Math.pow(300 / 18000, wFilter), 0.02);
+    if (!track.fx) {
+      // Every lane dry and no chain built: nothing to do (the common case).
+      if (!(wDrive || wCrush || wDelay || wReverb || wFilter)) return;
+      ensureTrackFx(track);
+      if (!track.fx) return;
+    }
+
+    // Only ramp what changed — re-scheduling five automation ramps per track on
+    // every 16th note adds up fast on the audio thread.
+    const fx = track.fx;
+    const last = track.lastFx || (track.lastFx = { drive: -1, crush: -1, delay: -1, reverb: -1, filter: -1 });
+    if (last.drive  !== wDrive)  { fx.drive.wet.rampTo(wDrive * 0.9, 0.02);   last.drive  = wDrive; }
+    if (last.crush  !== wCrush)  { fx.crush.wet.rampTo(wCrush * 0.85, 0.02);  last.crush  = wCrush; }
+    if (last.delay  !== wDelay)  { fx.delay.wet.rampTo(wDelay * 0.6, 0.02);   last.delay  = wDelay; }
+    if (last.reverb !== wReverb) { fx.reverb.wet.rampTo(wReverb * 0.7, 0.02); last.reverb = wReverb; }
+    if (last.filter !== wFilter) { fx.filter.frequency.rampTo(18000 * Math.pow(300 / 18000, wFilter), 0.02); last.filter = wFilter; }
   }
 
   // Fire one track's step: its own ADSR + per-step pitch, velocity, gate, and FX.
@@ -332,39 +427,28 @@ const audioEngine = (function () {
     const gain = (track.volume == null ? 0.8 : track.volume) * vel;
 
     const key = library.resolveKey(track.objectType);
-    if (key === '_default' || !track.env) {
+    if (key === '_default' || !track.bus) {
       // Mystery / no per-track voice: shared path (no per-track FX).
       triggerSample(track.objectType, time, extraCents, gain, track.snd, gateSec);
       return;
     }
 
-    const player = players[key];
-    if (!player || !player.loaded) return;
+    if (!isLoaded(key)) { ensureLoaded(key, true); return; }
 
     const eff = track.snd || settings[key] || {};
-    const env = track.env;
-    env.attack  = Math.max(0.001, +eff.attack  || 0);
-    env.decay   = Math.max(0.001, +eff.decay   || 0);
-    env.sustain = Math.max(0, Math.min(1, eff.sustain == null ? 1 : +eff.sustain));
-    env.release = Math.max(0.001, +eff.release || 0);
 
     applyAllTrackFx(track, step);
 
     const cents = (eff.cents || 0) + extraCents + keyTranspose * 100;
-    player.playbackRate = centsToRate(cents);
-    player.volume.value = 0; // gain rides the envelope velocity below
+    const rate = centsToRate(cents);
+    const sampleDur = Math.max(0.02, (buffers[key].duration || 0.2) / rate);
+    const hold = Math.max(0.02, gateSec);
+    const wantLoop = gateSec > sampleDur * 1.05;
 
-    const sampleDur = Math.max(0.02, (player.buffer.duration || 0.2) / player.playbackRate);
-    const hold = gateSec ? Math.max(0.02, gateSec) : sampleDur;
-    // Envelope velocity carries the per-track * per-step level, so two tracks on
-    // one sample keep independent volume without fighting over the shared player.
-    env.triggerAttackRelease(hold, time, Math.max(0.0001, gain));
-
-    const wantLoop = !!gateSec && gateSec > sampleDur * 1.05;
-    try { player.loop = wantLoop; } catch (e) {}
-    try { player.stop(time); } catch (e) {}
-    try { player.start(time); } catch (e) {}
-    if (gateSec) { try { player.stop(time + hold + 0.02); } catch (e) {} }
+    // A fresh voice+envelope per hit (see fireVoice) attacks from silence, so the
+    // per-track * per-step level depends only on velocity — never on how recently
+    // the previous note on this row played.
+    fireVoice(key, track.bus, time, rate, wantLoop, hold, eff, gain, 't:' + track.id);
   }
 
   // ---- public actions --------------------------------------------------------
@@ -375,11 +459,16 @@ const audioEngine = (function () {
     await ensureAudioStarted();
     const key = library.resolveKey(objectType);
     // Mystery routes through triggerSample which randomises the real sound.
-    if (key === '_default' || (players[key] && players[key].loaded)) {
+    if (key === '_default' || isLoaded(key)) {
       triggerSample(objectType, undefined, 0, undefined, snd);
-      console.log('[audioEngine] preview', key);
+    } else if (sampleUrls[key]) {
+      // Not downloaded yet — jump the queue and play the moment it lands, so an
+      // early tap makes a slightly late sound instead of silently doing nothing.
+      ensureLoaded(key, true, function () {
+        triggerSample(objectType, undefined, 0, undefined, snd);
+      });
     } else {
-      console.warn('[audioEngine] cannot preview', key, '- sample not loaded');
+      console.warn('[audioEngine] cannot preview', key, '- unknown sample');
     }
   }
 
@@ -564,13 +653,14 @@ const audioEngine = (function () {
     return s ? Object.assign({}, s) : null;
   }
 
-  // Set one ADSR field (attack/decay/sustain/release) and apply it live.
+  // Set one ADSR field (attack/decay/sustain/release). `settings` is the single
+  // source of truth: each hit builds its envelope from it at trigger time, so a
+  // change takes effect on the very next note with nothing else to update.
   function setSampleEnv(objectType, field, value) {
     const key = library.resolveKey(objectType);
-    const s = settings[key], env = envs[key];
-    if (!s || !env) return;
+    const s = settings[key];
+    if (!s) return;
     s[field] = value;
-    env[field] = value;
   }
 
   // Push a pad's live sound (ADSR + tune) onto every sequencer track that was
@@ -667,6 +757,8 @@ const audioEngine = (function () {
     if (!track.stepFx[fxName]) track.stepFx[fxName] = new Array(STEP_COUNT).fill(0);
     const clamped = Math.max(0, Math.min(1, +v || 0));
     track.stepFx[fxName][stepIndex] = clamped;
+    // Build the insert chain now (UI time), not later inside the audio callback.
+    if (clamped > 0) ensureTrackFx(track);
     return clamped;
   }
 
@@ -698,9 +790,8 @@ const audioEngine = (function () {
   // isn't loaded yet. Used to draw the static waveform on library cards/pads.
   function getWaveform(objectType) {
     const key = library.resolveKey(objectType);
-    const player = players[key];
-    if (player && player.loaded && player.buffer) {
-      const buf = player.buffer.get(); // underlying Web Audio AudioBuffer
+    if (isLoaded(key)) {
+      const buf = buffers[key].get(); // underlying Web Audio AudioBuffer
       if (buf && buf.length) return buf.getChannelData(0);
     }
     return null;
@@ -783,7 +874,6 @@ const audioEngine = (function () {
         stepPitch: t.stepPitch.slice(),
         stepVel: (t.stepVel || []).slice(),
         stepLen: t.stepLen.slice(),
-        stepLen: t.stepLen.slice(),
         stepFx: cloneStepFx(t.stepFx),
         muted: t.muted,
         volume: t.volume == null ? 0.8 : t.volume,
@@ -845,6 +935,11 @@ const audioEngine = (function () {
         volume: t.volume == null ? 0.8 : Math.max(0, Math.min(1, +t.volume || 0)),
       };
       buildTrackAudio(track);
+      // A peer's pattern may arrive with FX already drawn — build the insert
+      // chain up front so the first bar doesn't have to do it mid-callback.
+      if (FX_NAMES.some(function (n) { return fxs[n].some(function (v) { return v > 0; }); })) {
+        ensureTrackFx(track);
+      }
       tracks.push(track);
     });
 

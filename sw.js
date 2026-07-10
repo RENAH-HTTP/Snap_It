@@ -1,9 +1,13 @@
-const CACHE_NAME = 'snap-it-cache-v1';
+// v4: sample remap renamed most WAVs — the bump drops caches still holding the
+// old names (samples are cache-first, so they'd never be evicted otherwise).
+const CACHE_NAME = 'snap-it-cache-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './app.html',
   './manifest.json',
   './styles/app.css',
+  './styles/landing.css',
   './src/vision/cameraStub.js',
   './src/ui/visualizer.js',
   './src/vision/vision.js',
@@ -36,34 +40,41 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+function cacheIfOk(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') return response;
+  const copy = response.clone();
+  caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+  return response;
+}
+
+// The app's own code (page, scripts, stylesheets) is network-first: cache-first
+// here means an edit to ui.js or app.css never reaches the browser, which boots
+// the previous build instead — a whole afternoon of "my change isn't showing".
+// Falling back to the cache keeps the PWA usable offline. Everything else
+// (samples, fonts, images) stays cache-first: it's big and its names are stable.
+function isAppCode(request) {
+  if (request.mode === 'navigate') return true;
+  const dest = request.destination;
+  return dest === 'document' || dest === 'script' || dest === 'style';
+}
+
 self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  if (isAppCode(request)) {
+    event.respondWith(
+      fetch(request)
+        .then(response => cacheIfOk(request, response))
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
-      .then(cachedResponse => {
-        // Return cached response immediately if found
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-
-        // Otherwise fetch from network
-        return fetch(event.request).then(response => {
-          // Check if we received a valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response because it's a stream and can only be consumed once
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME).then(cache => {
-            // Only cache GET requests
-            if (event.request.method === 'GET') {
-              cache.put(event.request, responseToCache);
-            }
-          });
-
-          return response;
-        });
-      })
+    caches.match(request).then(cached => {
+      if (cached) return cached;
+      return fetch(request).then(response => cacheIfOk(request, response));
+    })
   );
 });

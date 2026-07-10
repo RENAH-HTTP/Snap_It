@@ -1,16 +1,17 @@
     /* ==================================================================== */
-    /* SNAP IT — the studio. Shares the landing page's identity: an amber    */
-    /* frame, bold black type, a faint grid, and floating rounded panels.    */
+    /* SNAP IT — the studio. Flat poster look: warm cream air, one bold      */
+    /* solid colour per module (see the .p-* blocks below), near-black ink,  */
+    /* white controls, NO elevation shadows — everything reads as flat 2D.   */
     /* ==================================================================== */
     :root {
       --font:   "Inter", system-ui, -apple-system, sans-serif;
 
-      --frame:  #E7DEC8;   /* warm cream frame (page / bars)          */
-      --paper:  #F7F3E9;   /* panel-inner / cream surfaces            */
-      --panel:  #FBF7EF;   /* floating panel plates (lighter than page so modules read without borders) */
-      --cell:   #F9F5EC;   /* keypad cells, chips                     */
-      --ink:    #17171A;   /* near-black ink, headings, thick borders */
-      --label:  #8C8672;   /* small uppercase captions                */
+      --frame:  #F2E9E0;   /* warm cream air (page / bars)            */
+      --paper:  #FAF3EA;   /* neutral inner surfaces / popovers       */
+      --panel:  #FFFDF9;   /* neutral plates (each module overrides)  */
+      --cell:   #FFFFFF;   /* keypad cells, chips                     */
+      --ink:    #14181A;   /* near-black ink, headings, borders       */
+      --label:  rgba(20,24,26,.55); /* small uppercase captions       */
 
       /* our accent palette (shared with the landing page) */
       --orange:  #E67E22;  /* primary accent — the logo's eye iris     */
@@ -30,11 +31,11 @@
       --mustard: #E0A32E;
       --red:     #E8503A;
       --purple:  #7C5CFF;
-      --tr-idle: #CDC3AC;  /* inactive track buttons                  */
+      --tr-idle: #B9CCC5;  /* inactive track buttons                  */
       --fx-pink: #C6407E;  /* FX track button                         */
 
-      --hair:      rgba(23,23,26,.9);    /* crisp grid hairlines  */
-      --hair-soft: rgba(23,23,26,.16);   /* soft borders          */
+      --hair:      rgba(61,89,100,.85);  /* crisp grid hairlines  */
+      --hair-soft: rgba(61,89,100,.18);  /* soft borders          */
 
       --step: 52px; --step-gap: 4px; --seq-label-w: 150px;
       --safe-b: env(safe-area-inset-bottom, 0px);
@@ -52,7 +53,7 @@
     button { font-family: inherit; border: none; background: none; cursor: pointer; color: inherit; }
     button:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-thumb { background: #CFCaBB; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb { background: #B9CCC5; border-radius: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
 
     /* Numeric readouts — heavy tabular numerals (our look, not a 7-seg LCD) */
@@ -69,7 +70,7 @@
       position: sticky; top: 0; z-index: 50;
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
       min-height: 60px; padding: 10px 16px;
-      background: var(--frame); box-shadow: inset 0 -1px 0 rgba(20,20,20,.14);
+      background: var(--frame); box-shadow: inset 0 -1px 0 rgba(61,89,100,.16);
     }
     .app-logo {
       display: inline-flex; align-items: center; gap: 9px;
@@ -112,7 +113,7 @@
     
     .tb-hamburger {
       position: relative;
-      width: 40px; height: 40px; border-radius: 12px; background: #000;
+      width: 40px; height: 40px; border-radius: 12px; background: var(--ink);
       display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
       cursor: pointer;
     }
@@ -136,10 +137,10 @@
       z-index: 100; transition: right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
       display: flex; flex-direction: column;
     }
-    .side-drawer.open { right: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); }
+    .side-drawer.open { right: 0; border-left: 2px solid var(--ink); }
     /* Scrim behind the open drawer — blocks interaction with the app underneath. */
     .drawer-scrim {
-      position: fixed; inset: 0; z-index: 99; background: rgba(23,20,14,.4);
+      position: fixed; inset: 0; z-index: 99; background: rgba(30,49,55,.4);
       opacity: 0; pointer-events: none; transition: opacity 0.3s;
     }
     .drawer-scrim.open { opacity: 1; pointer-events: auto; }
@@ -227,12 +228,20 @@
       transition: transform 0.3s ease-in-out;
       width: 100%;
     }
-    body[data-rotation="0"] .panel,
-    body[data-rotation="180"] .panel {
+    /* Flip / rotate is a phone-and-tablet feature: it only makes sense against
+       the one-module-per-screen deck. Desktop keeps the modular grid at every
+       window width, so the button is hidden and no rotation ever applies —
+       gating on the deck class (not a width breakpoint) keeps a narrow desktop
+       window from sliding into the touch layout's half-state. */
+    #flip-button { display: none; }
+    body.touch-deck #flip-button { display: flex; }
+
+    body.touch-deck[data-rotation="0"] .panel,
+    body.touch-deck[data-rotation="180"] .panel {
       width: 100%;
     }
-    body[data-rotation="90"] .panel,
-    body[data-rotation="270"] .panel {
+    body.touch-deck[data-rotation="90"] .panel,
+    body.touch-deck[data-rotation="270"] .panel {
       /* Sized so the ROTATED box exactly fills one deck page on any screen:
          layout width becomes visual height (deck height minus the page's
          14px top / 56px bottom padding) and layout height becomes visual
@@ -243,28 +252,19 @@
          its own width — that would collapse a flipped module to a small square. */
       flex-shrink: 0;
     }
-    body[data-rotation="90"] .panel {
+    body.touch-deck[data-rotation="90"] .panel {
       transform: rotate(90deg);
     }
-    body[data-rotation="180"] .panel {
+    body.touch-deck[data-rotation="180"] .panel {
       transform: rotate(180deg);
     }
-    body[data-rotation="270"] .panel {
+    body.touch-deck[data-rotation="270"] .panel {
       transform: rotate(270deg);
     }
-    /* Desktop (mouse) grid mode: the flip feature is single-column only, so hide
-       it here and let panels stretch to fill their grid cell (no ragged gaps).
-       Touch phones/tablets keep the flip button and the rotate transforms. */
+    /* Desktop (mouse) grid mode: let panels stretch to fill their grid cell
+       (no ragged gaps). */
     @media (min-width: 720px) and (hover: hover) and (pointer: fine) {
-      #flip-button { display: none !important; }
       .panel-rot-wrapper { align-items: stretch; }
-      body[data-rotation="90"] .panel,
-      body[data-rotation="180"] .panel,
-      body[data-rotation="270"] .panel {
-        transform: none !important;
-        width: 100% !important;
-        height: auto !important;
-      }
       /* Live Signal is a slim master-output monitor, not a hero panel */
       .p-scope { height: auto; }
       .p-scope .live-scope { flex: 0 0 auto; height: 96px; min-height: 0; }
@@ -279,70 +279,89 @@
     .p-xy     { grid-area: xy; }
 
     /* ---------------------------------------------------------------- */
-    /* MOBILE / TABLET: swipe deck — one module per screen, swipe L/R.   */
-    /* Desktop (fine pointer) keeps the modular grid above; this only    */
-    /* engages on touch-primary devices (auto by device, per #14).       */
+    /* MOBILE / TABLET: tabbed deck — one module per screen, named tab   */
+    /* strip at the bottom. Desktop (fine pointer) keeps the modular     */
+    /* grid above; this engages on touch-primary devices (per #14).      */
+    /*                                                                   */
+    /* Gated on body.touch-deck, not @media (pointer: coarse), so that   */
+    /* ?mobile=1 can force this layout in a desktop browser — checking   */
+    /* it locally otherwise needs DevTools device emulation. ui.js sets  */
+    /* the class from the media query OR the flag (see isTouchDeck).     */
     /* ---------------------------------------------------------------- */
     .deck-pager { display: none; }
-    @media (pointer: coarse) {
-      .deck {
-        display: flex; flex-direction: row;
-        grid-template-areas: none; gap: 0; padding: 0; max-width: none;
-        height: calc(100dvh - var(--topbar-h));
-        /* One page per swipe, like a native tab pager: the deck never
-           free-scrolls on its own — the JS gesture pager (ui.js
-           setupModulePager) drags scrollLeft with the finger and snaps
-           exactly one page on release. pan-y keeps vertical scrolling
-           inside a page native. */
-        overflow: hidden;
-        touch-action: pan-y;
-        overscroll-behavior-x: contain;
-        scrollbar-width: none;
-      }
-      .deck::-webkit-scrollbar { display: none; }
-      .panel-rot-wrapper {
-        /* 100% (not 100vw) — must equal the deck's clientWidth exactly or
-           the page positions drift and swipes land between pages. */
-        flex: 0 0 100%; width: 100%; min-width: 100%;
-        overflow-x: hidden; overflow-y: auto;
-        overscroll-behavior: contain;
-        align-items: stretch;
-        padding: 14px 16px calc(56px + var(--safe-b));
-      }
-      /* Each module fills its whole page — no dead space under short panels.
-         (Rotated 90/270 layouts size the panel explicitly, so skip those.) */
-      .panel { min-height: 100%; }
-      /* Flipped modules: rotate about the top-left with a compensating
-         translate so the rotated box hangs DOWN from the page origin —
-         always fully on screen, and a module longer than the screen (the
-         sequencer runs as long as its beats) scrolls vertically, matching
-         the phone's real orientation. Swiping stays screen-space. */
-      body[data-rotation="90"] .panel-rot-wrapper,
-      body[data-rotation="270"] .panel-rot-wrapper { display: block; }
-      body[data-rotation="90"] .panel,
-      body[data-rotation="270"] .panel { min-height: 0; }
-      body[data-rotation="90"] .panel {
-        transform-origin: top left;
-        transform: rotate(90deg) translateY(-100%);
-      }
-      body[data-rotation="270"] .panel {
-        transform-origin: top left;
-        transform: rotate(-90deg) translateX(-100%);
-      }
-      /* Pager dots — tap to jump, and they track the current page. */
-      .deck-pager {
-        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
-        justify-content: center; align-items: center; gap: 7px;
-        padding: 9px 12px calc(9px + var(--safe-b));
-        background: linear-gradient(to top, var(--cream) 60%, rgba(241,238,229,0));
-        pointer-events: none;
-      }
-      .deck-dot {
-        pointer-events: auto; width: 8px; height: 8px; border-radius: 50%;
-        background: rgba(23,23,27,.22); border: none; padding: 0; cursor: pointer;
-        transition: width .2s, background .2s, border-radius .2s;
-      }
-      .deck-dot.active { width: 22px; border-radius: 5px; background: var(--ink); }
+    body.touch-deck .deck {
+      display: flex; flex-direction: row;
+      grid-template-areas: none; gap: 0; padding: 0; max-width: none;
+      height: calc(100dvh - var(--topbar-h));
+      /* The deck never scrolls on its own — only the tab strip's goTo
+         (ui.js setupModuleTabs) animates scrollLeft. pan-y keeps
+         vertical scrolling inside a page native; there is no swipe
+         gesture between modules anymore. */
+      overflow: hidden;
+      touch-action: pan-y;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+    }
+    body.touch-deck .deck::-webkit-scrollbar { display: none; }
+    body.touch-deck .panel-rot-wrapper {
+      /* 100% (not 100vw) — must equal the deck's clientWidth exactly or
+         the page positions drift and tabs land between pages. */
+      flex: 0 0 100%; width: 100%; min-width: 100%;
+      overflow-x: hidden; overflow-y: auto;
+      overscroll-behavior: contain;
+      align-items: stretch;
+      padding: 14px 16px calc(74px + var(--safe-b));
+    }
+    /* Each module fills its whole page — no dead space under short panels.
+       (Rotated 90/270 layouts size the panel explicitly, so skip those.) */
+    body.touch-deck .panel { min-height: 100%; }
+    /* Flipped modules: rotate about the top-left with a compensating
+       translate so the rotated box hangs DOWN from the page origin —
+       always fully on screen, and a module longer than the screen (the
+       sequencer runs as long as its beats) scrolls vertically, matching
+       the phone's real orientation. */
+    body.touch-deck[data-rotation="90"] .panel-rot-wrapper,
+    body.touch-deck[data-rotation="270"] .panel-rot-wrapper { display: block; }
+    body.touch-deck[data-rotation="90"] .panel,
+    body.touch-deck[data-rotation="270"] .panel { min-height: 0; }
+    body.touch-deck[data-rotation="90"] .panel {
+      transform-origin: top left;
+      transform: rotate(90deg) translateY(-100%);
+    }
+    body.touch-deck[data-rotation="270"] .panel {
+      transform-origin: top left;
+      transform: rotate(-90deg) translateX(-100%);
+    }
+    /* Bottom tab strip — named module tabs. Scrolls sideways when all
+       eight labels don't fit; centers when they do (auto margins on the
+       end tabs collapse to flex-start under overflow, which safe-center
+       can't do yet). The ink underline is placed by JS. */
+    body.touch-deck .deck-pager {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
+      align-items: center; gap: 2px;
+      padding: 6px 10px calc(8px + var(--safe-b));
+      background: linear-gradient(to top, var(--paper) 78%, rgba(242,248,240,0));
+      overflow-x: auto; scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.touch-deck .deck-pager::-webkit-scrollbar { display: none; }
+    body.touch-deck .deck-tab:first-of-type { margin-left: auto; }
+    body.touch-deck .deck-tab:last-of-type { margin-right: auto; }
+    body.touch-deck .deck-tab {
+      flex: 0 0 auto; border: none; background: none; cursor: pointer;
+      font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .05em;
+      text-transform: uppercase; white-space: nowrap;
+      color: rgba(61,89,100,.45);
+      padding: 9px 11px 11px;
+      transition: color .2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body.touch-deck .deck-tab.active { color: var(--ink); }
+    body.touch-deck .deck-tab-ink {
+      position: absolute; left: 0; bottom: calc(6px + var(--safe-b));
+      height: 3px; width: 0; border-radius: 2px; background: var(--ink);
+      transition: transform .28s cubic-bezier(.2, .7, .2, 1),
+                  width .28s cubic-bezier(.2, .7, .2, 1);
     }
 
     /* Live-signal strip — the master waveform as it plays (Visualizer module). */
@@ -357,13 +376,36 @@
       .p-scope { height: auto; }
       .p-scope .live-scope { flex: 0 0 auto; height: 84px; min-height: 0; }
     }
+    /* On the tabbed touch deck the Signal module owns a whole page, so the
+       84px "monitor strip" cap above left a giant empty card (the "why is
+       everything so small on phones" screenshot). Let the scope fill its page. */
+    body.touch-deck .p-scope { height: 100%; }
+    body.touch-deck .p-scope .live-scope { flex: 1; height: auto; min-height: 200px; }
 
-    /* panels match the landing page: thick ink border + a hard offset shadow */
+    /* Flat 2D module cards: one bold solid colour each (poster-style, like a
+       stack of coloured tiles — no borders, no elevation shadows). Setting
+       --panel per module recolours the card AND every frozen gutter inside it
+       (the sticky sequencer columns all paint background: var(--panel)), so
+       nothing needs re-plumbing. Controls stay white (--cell) and ink stays
+       near-black, which is what keeps black-text-on-colour readable. */
     .panel {
       display: flex; flex-direction: column;
-      background: var(--panel); border-radius: 18px; padding: 14px 16px 16px;
+      background: var(--panel); border-radius: 22px; padding: 14px 16px 16px;
       min-width: 0;
     }
+    /* Colours chosen to MEAN something, not just differ:                     */
+    .p-video  { --panel: #2E7CFF; }  /* Scanner   — lens/viewfinder blue      */
+    .p-mixer  { --panel: #2B2E33; }  /* The Mix   — graphite mixing desk      */
+    .p-tempo  { --panel: #F04438; }  /* Tempo/Key — heartbeat red             */
+    .p-keypad { --panel: #FFB700; }  /* Your Kit  — gold collection yellow    */
+    .p-sound  { --panel: #FF6A2C; }  /* Sound     — warmth-of-tone orange     */
+    .p-scope  { --panel: #0FB05E; }  /* Signal    — oscilloscope green        */
+    .p-seq    { --panel: #14B8A6; }  /* Sequencer — workbench teal            */
+    .p-xy     { --panel: #8B5CF6; }  /* FX Pad    — space/reverb violet       */
+    /* The graphite mixer card frames a white fader plate; anything sitting
+       straight on the dark panel flips to light ink so it stays readable. */
+    .p-mixer { --label: rgba(255,253,249,.7); }
+    .p-mixer .pc-btn { color: #FFFDF9; }
     /* plain bold heading (no tag/pill), like the landing's section titles */
     /* Module titles hidden per design — keep the row only when it holds action
        buttons (camera toggle / fullscreen); text collapses via font-size:0. */
@@ -411,13 +453,15 @@
     }
     
     /* ---------------------------------------------------------------- */
-    /* VIDEO - the scanner is an EYE: the feed lives in the iris,       */
-    /* halftone-printed, and the lids blink and squint while it looks.  */
+    /* VIDEO - the scanner is an EYE, drawn like one: white sclera in a  */
+    /* thick ink outline, orange spoked iris with a limbal ring, black   */
+    /* pupil with a glint, lashes on the blinking lids. The camera feed  */
+    /* lives in the iris; going live opens it into a plain viewfinder.   */
     /* ---------------------------------------------------------------- */
     .eye {
       position: relative; width: 100%; aspect-ratio: 10 / 7;
       border-radius: 50% / 50%; overflow: hidden;
-      background: #F6F2E6; box-shadow: inset 0 0 0 2px rgba(23,23,27,.28);
+      background: #FFFFFF; box-shadow: inset 0 0 0 3px var(--ink);
     }
     
     .panel-rot-wrapper.module-fullscreen .eye {
@@ -429,6 +473,7 @@
       width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0;
       animation: none;   /* no glancing in fullscreen — hold the frame steady */
     }
+    .panel-rot-wrapper.module-fullscreen .eye-ball::before,
     .panel-rot-wrapper.module-fullscreen .eye-ball::after {
       display: none;
     }
@@ -449,6 +494,7 @@
       width: 100%; height: 100%; aspect-ratio: auto; border-radius: 12px;
       animation: none;
     }
+    .eye.eye-open .eye-ball::before,
     .eye.eye-open .eye-ball::after { display: none; }
     .eye.eye-open .eye-lid { animation: none; }
     .eye.eye-open .lid-top    { transform: translateY(-104%); }
@@ -456,25 +502,36 @@
     
     .cam-disabled-msg {
       position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; background: rgba(241, 238, 229, 0.9);
+      align-items: center; justify-content: center; background: rgba(242, 248, 240, 0.9);
       z-index: 10; font-weight: 800; font-size: 16px; color: var(--ink); gap: 12px;
       backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.3s;
     }
     .cam-disabled-msg.show { opacity: 1; pointer-events: auto; }
-    }
+    /* The iris: flat-poster orange with darker radial spokes (the logo's iris).
+       The camera feed sits inside it; while the camera is idle the video is
+       empty/transparent, so the drawn iris shows through. */
     .eye-ball {
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       height: 80%; aspect-ratio: 1; border-radius: 50%; overflow: hidden;
-      background: #1b1a17;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 42%, rgba(0,0,0,.28) 74%),
+        repeating-conic-gradient(#E8702A 0deg 11deg, #FF9243 11deg 22deg);
       animation: look 9s ease-in-out infinite;
     }
     .eye-ball video {
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
       filter: contrast(1.1) saturate(1.3) sepia(.1);
     }
-    .eye-ball::after {   /* soft iris ring so it reads as an eye, not a hard disc */
-      content: ''; position: absolute; inset: 0; border-radius: 50%; z-index: 3;
-      box-shadow: inset 0 0 0 3px rgba(23,23,27,.28), inset 0 0 24px rgba(0,0,0,.3);
+    .eye-ball::before {  /* pupil — a solid ink disc in the middle of the iris */
+      content: ''; position: absolute; left: 50%; top: 50%;
+      width: 42%; height: 42%; transform: translate(-50%, -50%);
+      border-radius: 50%; background: #14181A; z-index: 3;
+      pointer-events: none;
+    }
+    .eye-ball::after {   /* limbal ring + the white glint over pupil's edge */
+      content: ''; position: absolute; inset: 0; border-radius: 50%; z-index: 4;
+      box-shadow: inset 0 0 0 3px var(--ink);
+      background: radial-gradient(circle at 34% 30%, rgba(255,255,255,.95) 0 7.5%, rgba(255,255,255,0) 8.5%);
       pointer-events: none;
     }
     .cam-halftone {   /* soft newspaper dither over the feed */
@@ -486,7 +543,7 @@
     #camera-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; }
     .eye-lid {
       position: absolute; left: -6%; width: 112%; height: 58%; z-index: 4;
-      background: var(--panel); box-shadow: 0 0 0 2px rgba(23,23,27,.28);
+      background: var(--panel); box-shadow: 0 0 0 3px var(--ink);
       transition: transform .5s ease;   /* smooth "open" when the camera goes live */
     }
     .lid-top {
@@ -494,6 +551,15 @@
       transform: translateY(-96%);
       animation: blinktop 7s ease-in-out infinite;
     }
+    /* Three flat lashes riding the top lid's edge, so a blink sweeps them
+       across the eye. (They live on the lid, inside the eye's overflow.) */
+    .lid-top::after {
+      content: ''; position: absolute; left: calc(50% - 2px); bottom: 2%;
+      width: 4px; height: 13%; border-radius: 2px; background: var(--ink);
+      box-shadow: -38px 5px 0 var(--ink), 38px 5px 0 var(--ink);
+    }
+    .panel-rot-wrapper.module-fullscreen .lid-top::after,
+    .eye.eye-open .lid-top::after { display: none; }
     .lid-bottom {
       bottom: -4%; border-radius: 50% 50% 0 0 / 100% 100% 0 0;
       transform: translateY(96%);
@@ -546,7 +612,7 @@
     .mix-ticks { display: none; }
     .mix-zero {
       position: absolute; top: 38%; left: 12px; right: 12px; height: 2px;
-      background: repeating-linear-gradient(90deg, rgba(23,23,26,.4) 0 6px, transparent 6px 12px);
+      background: repeating-linear-gradient(90deg, rgba(61,89,100,.4) 0 6px, transparent 6px 12px);
       pointer-events: none;
     }
     .mix-scope {
@@ -566,7 +632,7 @@
       position: relative; flex: 0 0 54px; width: 54px; height: 100%;
       display: flex; flex-direction: column; justify-content: flex-end;
       cursor: ns-resize; touch-action: none;
-      background: repeating-linear-gradient(0deg, rgba(23,23,26,.05) 0 2px, transparent 2px 12px);
+      background: repeating-linear-gradient(0deg, rgba(61,89,100,.06) 0 2px, transparent 2px 12px);
     }
     .mix-crayon {   /* bold level bar with a thick ink cap */
       width: 100%; height: calc(var(--v, 50) * 1%);
@@ -580,7 +646,7 @@
       background: var(--bar-color, var(--navy)); font-weight: 900;
       display: flex; align-items: center; justify-content: center; color: #fff;
     }
-    .mix-slot.muted .mix-crayon, .mix-slot.muted .mix-strip { background: #CFC9B8; }
+    .mix-slot.muted .mix-crayon, .mix-slot.muted .mix-strip { background: #B9CCC5; }
     .mix-slot.muted .mix-strip { color: var(--ink); }
     .mix-mute-label {
       position: absolute; left: 12px; bottom: 7px; font-size: 10px;
@@ -593,7 +659,7 @@
     /* Channel identity + an obvious mute, so 16 thin channels stay readable. */
     .mix-num {
       position: absolute; top: 4px; left: 0; right: 0; text-align: center;
-      font-size: 9px; font-weight: 800; color: rgba(23,23,26,.5); pointer-events: none;
+      font-size: 9px; font-weight: 800; color: rgba(61,89,100,.5); pointer-events: none;
     }
     .mix-strip .ms-ico { line-height: 0; }
     .mix-strip .ms-ico svg { width: 19px; height: 19px; fill: #fff; stroke: #fff; }
@@ -670,7 +736,7 @@
       transition: background .12s;
     }
     @keyframes padin { from { opacity: 0; } }
-    .pad:hover { background: #E9E5D8; }
+    .pad:hover { background: #E4EFE4; }
     .pad.filler { cursor: default; }
     .pad.locked { cursor: default; }
     .pad.selected { box-shadow: inset 0 0 0 2.5px var(--type-color, var(--navy)); }
@@ -686,7 +752,7 @@
     .pad-num { position: absolute; right: 7px; bottom: 6px; opacity: .55; }
     .pad-hatch {   /* undiscovered sound: the reference's striped circle */
       width: 56%; aspect-ratio: 1; border-radius: 50%;
-      background: repeating-linear-gradient(45deg, #C6C1B0 0 3px, transparent 3px 6.5px);
+      background: repeating-linear-gradient(45deg, #B7C9C4 0 3px, transparent 3px 6.5px);
     }
     .pad-new-dot {
       position: absolute; top: 8px; left: 8px; width: 9px; height: 9px;
@@ -704,7 +770,7 @@
     .pad-swap:active { transform: scale(.9); }
     .pad-add-ico {
       width: 40%; max-width: 40px; aspect-ratio: 1; border-radius: 50%;
-      border: 2px dashed #C6C1B0; color: #A39E90;
+      border: 2px dashed #B7C9C4; color: #8FA6AC;
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; font-weight: 300; line-height: 1;
     }
@@ -725,7 +791,7 @@
       flex: 1; display: flex; align-items: center; justify-content: center;
       border-radius: 12px; text-align: center; padding: 20px;
       font-size: 10px; font-weight: 700; letter-spacing: .18em; color: var(--label);
-      background: repeating-linear-gradient(45deg, rgba(23,23,27,.04) 0 4px, transparent 4px 9px);
+      background: repeating-linear-gradient(45deg, rgba(61,89,100,.05) 0 4px, transparent 4px 9px);
     }
     .ed-main { flex: 1.7; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
     .ed-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -752,7 +818,7 @@
     .vfader { position: relative; flex: 1; cursor: ns-resize; touch-action: none; }
     .vtrack {
       position: absolute; left: 50%; top: 4px; bottom: 4px; width: 3px;
-      transform: translateX(-50%); background: rgba(23,23,27,.3); border-radius: 2px;
+      transform: translateX(-50%); background: rgba(61,89,100,.32); border-radius: 2px;
     }
     .vhandle {
       position: absolute; left: 50%; top: var(--p, 50%);
@@ -761,7 +827,7 @@
     }
     .vhandle::after {   /* fader cap line */
       content: ''; position: absolute; left: 4px; right: 4px; top: 50%;
-      height: 2px; margin-top: -1px; background: rgba(241,238,229,.85); border-radius: 1px;
+      height: 2px; margin-top: -1px; background: rgba(242,248,240,.85); border-radius: 1px;
     }
     .ed-fletters { display: flex; padding: 0 8px; }
     .ed-fletters span {
@@ -773,7 +839,7 @@
     .hslider { position: relative; flex: 1; height: 24px; cursor: ew-resize; touch-action: none; }
     .hslider::before {
       content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 3px;
-      margin-top: -1.5px; background: rgba(23,23,27,.3); border-radius: 2px;
+      margin-top: -1.5px; background: rgba(61,89,100,.32); border-radius: 2px;
     }
     .hknob {
       position: absolute; top: 50%; left: var(--p, 50%);
@@ -813,7 +879,7 @@
     }
     .seq-header {
       position: sticky; top: 0; z-index: 12;
-      background: var(--panel); border-bottom: 1px solid rgba(23,23,27,.08);
+      background: var(--panel); border-bottom: 1px solid rgba(61,89,100,.09);
       display: flex; flex-direction: column;
     }
     .pat-len-wrap {
@@ -826,12 +892,12 @@
     .ruler-spacer-ico {
       flex-shrink: 0; width: 48px; position: sticky; left: 0;
       background: var(--panel); z-index: 13;
-      border-right: 1px solid rgba(23,23,27,.08);
+      border-right: 1px solid rgba(61,89,100,.09);
     }
     .ruler-spacer-txt {
       flex-shrink: 0; width: 102px;
       background: var(--panel); z-index: 12;
-      border-right: 1px solid rgba(23,23,27,.08);
+      border-right: 1px solid rgba(61,89,100,.09);
     }
     .ruler-steps { display: flex; gap: var(--step-gap); align-items: flex-end; padding-bottom: 4px; }
     .ruler-steps span {
@@ -841,7 +907,7 @@
     .ruler-steps span:nth-child(4n+1):not(:first-child) { margin-left: 9px; }
 
     .track-block {
-      padding: 8px 0 6px; border-bottom: 1px solid rgba(23,23,27,.08);
+      padding: 8px 0 6px; border-bottom: 1px solid rgba(61,89,100,.09);
       min-width: max-content;
     }
     .track-block:last-child { border-bottom: 0; }
@@ -849,15 +915,26 @@
     .tl-ico-wrap {
       flex-shrink: 0; width: 48px; position: sticky; left: 0;
       background: var(--panel); z-index: 10;
-      display: flex; align-items: center; padding-left: 10px;
-      border-right: 1px solid rgba(23,23,27,.08);
+      display: flex; flex-direction: column; align-items: flex-start;
+      justify-content: center; gap: 5px; padding-left: 10px;
+      border-right: 1px solid rgba(61,89,100,.09);
     }
+    /* The per-step settings toggle — a real button, not a glyph inside the icon */
+    .track-adv-btn {
+      display: inline-flex; align-items: center; gap: 3px;
+      height: 17px; padding: 0 5px; border-radius: 6px;
+      background: var(--cell); border: 1.5px solid var(--ink);
+      color: var(--ink); font-size: 8px; font-weight: 800; letter-spacing: .06em;
+      line-height: 1;
+    }
+    .track-adv-btn .adv-indicator { font-size: 8px; display: inline-block; transition: transform .18s; }
+    .track-block.adv-open .track-adv-btn { background: var(--ink); color: #fff; }
     .tl-txt-wrap {
       flex-shrink: 0; width: 102px;
       background: var(--panel);
       display: flex; align-items: center; padding-right: 10px; padding-left: 8px;
       font-size: 12px; font-weight: 700;
-      border-right: 1px solid rgba(23,23,27,.08);
+      border-right: 1px solid rgba(61,89,100,.09);
     }
     .track-steps { display: flex; gap: var(--step-gap); align-items: center; }
     .tl-ico {
@@ -909,20 +986,40 @@
       font-size: 9px; font-weight: 700; letter-spacing: .16em;
       text-transform: uppercase; color: var(--label);
       display: flex; align-items: center; padding-top: 5px; padding-left: 10px;
-      border-right: 1px solid rgba(23,23,27,.08);
+      border-right: 1px solid rgba(61,89,100,.09);
     }
     .pitch-lane-txt { display: none; }
     .pitch-cells { display: flex; gap: var(--step-gap); align-items: center; padding-top: 5px; }
     .pitch-cell {
       width: var(--step); height: 16px; border-radius: 4px;
-      background: rgba(23,23,27,.06); cursor: ns-resize; touch-action: none;
+      background: rgba(61,89,100,.07); cursor: ns-resize; touch-action: none;
       display: flex; align-items: center; justify-content: center;
       font-size: 8px; font-weight: 800; color: transparent;
     }
     .pitch-cell.beat-start:not(:first-child) { margin-left: 9px; }
-    .pitch-cell:hover { background: rgba(23,23,27,.12); }
+    .pitch-cell:hover { background: rgba(61,89,100,.13); }
     .pitch-cell.nz { background: var(--cell); border: 1px solid var(--hair-soft); color: var(--ink); }
     .pitch-cell.pitch-cell-hidden { display: none; }
+
+    /* Phone/tablet: no frozen label columns at all — they covered the cells.
+       The track name column is dropped (the coloured icon IS the row identity;
+       the full name still lives in the mixer and the button titles), and each
+       advanced lane's label moves ABOVE its cells as a small caption, so labels
+       and cells can never stack. Lane cells keep the icon-gutter offset so step
+       N stays column-aligned across the ruler, the row and every lane. */
+    body.touch-deck { --seq-ico-w: 44px; }
+    body.touch-deck .ruler-spacer-ico,
+    body.touch-deck .tl-ico-wrap { width: var(--seq-ico-w); padding-left: 6px; }
+    body.touch-deck .ruler-spacer-txt,
+    body.touch-deck .tl-txt-wrap { display: none; }
+    body.touch-deck .pitch-lane { flex-direction: column; align-items: stretch; }
+    body.touch-deck .pitch-lane-ico {
+      position: static; width: auto; border-right: 0; background: transparent;
+      font-size: 8px; letter-spacing: .12em;
+      padding: 6px 0 0 calc(var(--seq-ico-w) + 2px);
+    }
+    body.touch-deck .pitch-cells,
+    body.touch-deck .adv-fxbtns { padding-left: var(--seq-ico-w); }
 
     /* ---- advanced per-step lanes (pitch / vel / gate / fx) behind an expander -- */
     .track-adv-toggle {
@@ -983,7 +1080,7 @@
       position: relative; flex: 1; min-height: 260px;
       border-radius: 14px; overflow: hidden; touch-action: none; cursor: crosshair;
     }
-    .xy-block { position: absolute; box-shadow: inset 0 0 0 1.5px rgba(23,23,26,.85); }
+    .xy-block { position: absolute; box-shadow: inset 0 0 0 1.5px rgba(61,89,100,.85); }
     .xy-orange { left: 0;   top: 0;   width: 47%; height: 45%; background: var(--orange); }  /* DRIVE  */
     .xy-blue   { left: 47%; top: 0;   width: 53%; height: 37%; background: var(--indigo); }  /* FILTER */
     .xy-brick  { left: 47%; top: 37%; width: 32%; height: 8%;  background: var(--gold); }    /* CRUSH  */
@@ -1026,7 +1123,7 @@
       position: sticky; bottom: 0; z-index: 40;
       display: flex; align-items: center; justify-content: center; gap: 12px;
       padding: 10px 16px calc(10px + var(--safe-b));
-      background: var(--frame); box-shadow: inset 0 1px 0 rgba(20,20,20,.14);
+      background: var(--frame); box-shadow: inset 0 1px 0 rgba(61,89,100,.16);
     }
     .bb-label { font-size: 19px; font-weight: 300; letter-spacing: .1em; color: var(--tr-idle); }
     .bb-tracks {
@@ -1058,7 +1155,7 @@
       background: var(--paper); border: 1px solid var(--hair-soft);
       border-radius: 18px 18px 0 0;
       padding: 18px 20px calc(22px + var(--safe-b));
-      box-shadow: 0 -14px 44px rgba(23,23,27,.16);
+      border: 2px solid var(--ink); border-bottom: none;
       /* dvh (not vh) so the sheet accounts for the phone browser's URL bar and
          never runs off-screen; it scrolls internally instead (#10). */
       max-height: min(82dvh, 660px); overflow-y: auto;
@@ -1069,7 +1166,7 @@
       .jam-panel, .guide-panel, .profile-panel {
         left: auto; bottom: auto; top: 72px; right: 18px; width: 350px;
         border-radius: 16px; padding: 18px 20px 20px;
-        box-shadow: 0 18px 50px rgba(23,23,27,.18);
+        border: 2px solid var(--ink);
       }
     }
 
@@ -1078,7 +1175,7 @@
       font-size: 10px; font-weight: 800; letter-spacing: .22em;
       color: var(--label); margin-bottom: 12px;
     }
-    .pp-sub { font-size: 12px; line-height: 1.5; color: #6E6A5E; margin: 0 0 12px; }
+    .pp-sub { font-size: 12px; line-height: 1.5; color: #5E7C86; margin: 0 0 12px; }
     .pp-field { display: block; width: 100%; margin-bottom: 8px; user-select: text; }
     .pp-row { display: flex; gap: 6px; margin-top: 4px; }
     .pp-row .pp-namefield { flex: 1; margin: 0; }
@@ -1133,79 +1230,116 @@
     @media (max-width: 620px) { .tb-coll { height: 40px; padding: 0 12px; } .tb-coll .coll-label { font-size: 11.5px; } }
 
     /* ---------------------------------------------------------------- */
-    /* COLLECTION — the pokedex of sounds                               */
+    /* COLLECTION — the field guide of sounds.                          */
+    /* Deliberately NOT the instrument aesthetic: the sequencer is warm  */
+    /* cream hardware, the collection is an airy creature-collector      */
+    /* screen — light green air, no card plates, stat-on-top entries.    */
     /* ---------------------------------------------------------------- */
     .col-panel {
+      /* This view's own quiet palette (slate text on pale-green air). */
+      --fg-ink:   #3D5964;  /* stat numbers, title       */
+      --fg-slate: #5E7C86;  /* names, chip text          */
+      --fg-faint: #93A8AE;  /* captions, locked entries  */
+      --fg-teal:  #3E8E85;  /* active pill + underline   */
       width: min(780px, calc(100vw - 28px)); max-height: 85vh; overflow-y: auto;
-      background: var(--paper); border-radius: 18px; padding: 18px 20px 20px;
-      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      background: var(--paper);
+      border-radius: 22px; padding: 18px 22px 26px;
+      border: 2px solid var(--ink);
       animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
     }
-    .col-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    /* Title stacked over the count, with a short underline bar beneath —
+       reads like the active tab of a field guide. Close floats top-right. */
+    .col-head {
+      position: relative; display: flex; flex-direction: column;
+      align-items: center; margin-bottom: 14px; padding-top: 4px;
+    }
     .col-head h2 {
-      margin: 0; font-size: 10px; font-weight: 800;
-      letter-spacing: .22em; color: var(--label);
+      margin: 0; font-size: 15px; font-weight: 800;
+      letter-spacing: .24em; color: var(--fg-ink);
     }
-    .col-count { display: inline-flex; align-items: baseline; gap: 5px; color: var(--navy); }
-    .col-count .col-of { font-size: 11px; font-weight: 800; color: var(--label); }
+    .col-count { margin-top: 3px; font-size: 12px; font-weight: 800; color: var(--fg-slate); }
+    .col-count .col-of { color: var(--fg-faint); letter-spacing: .06em; }
+    .col-count::after {
+      content: ''; display: block; width: 64px; height: 3px; border-radius: 2px;
+      background: var(--fg-teal); margin: 8px auto 0;
+    }
     .col-close {
-      margin-left: auto; width: 30px; height: 30px; border-radius: 8px;
-      background: var(--cell); border: 1px solid var(--hair-soft); font-size: 13px;
+      position: absolute; top: 0; right: 0; width: 34px; height: 34px;
+      border-radius: 50%; background: #fff; border: 1.5px solid var(--hair-soft); font-size: 13px;
+      color: var(--fg-slate);
     }
-    .col-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    /* Filter pills: white capsules, the active one filled teal. */
+    .col-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-bottom: 18px; }
     .col-chip {
-      display: flex; align-items: center; gap: 6px; padding: 6px 10px;
-      border-radius: 8px; background: var(--cell); border: 1px solid var(--hair-soft);
-      font-size: 11px; font-weight: 800;
+      display: flex; align-items: center; gap: 6px; padding: 7px 13px;
+      border-radius: 999px; background: #fff; border: 1px solid rgba(61,89,100,.14);
+      color: var(--fg-slate); font-size: 11px; font-weight: 800;
     }
     .col-chip .ico { line-height: 0; }
     .col-chip .ico svg { width: 13px; height: 13px; }
     .col-chip .cnt { opacity: .55; font-weight: 700; }
-    .col-chip.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .col-chip.active {
+      background: var(--fg-teal); border-color: var(--fg-teal); color: #fff;
+    }
     .col-chip.active .ico { color: #fff !important; }
     .collection-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 10px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+      gap: 18px 10px;
     }
+    /* Entries sit straight on the air — no plate. Anatomy, top to bottom:
+       note stat / [sparkles left, new-star right] / glyph / name / colour bar
+       / category · rarity caption. Hover lifts the entry on a white breath. */
     .col-item {
-      display: flex; flex-direction: column; align-items: center; gap: 7px;
-      background: var(--panel); border-radius: 12px; padding: 16px 10px 12px;
-      text-align: center; position: relative; transition: filter .12s;
+      position: relative; display: flex; flex-direction: column; align-items: center;
+      gap: 6px; background: transparent; border-radius: 14px;
+      padding: 12px 8px 10px; text-align: center;
+      transition: transform .12s ease, background .12s ease;
     }
-    .col-item:not(.locked):hover { filter: brightness(1.04); }
+    .col-item:not(.locked):hover { transform: translateY(-3px); background: rgba(255,255,255,.6); }
+    .col-item:not(.locked):active { transform: translateY(-1px); }
     .col-item.locked { cursor: default; }
-    .col-item .ci-ico { line-height: 0; height: 40px; display: flex; align-items: center; }
-    .col-item .ci-ico svg { width: 38px; height: 38px; }
+    .ci-stat { font-size: 19px; font-weight: 800; line-height: 1; color: var(--fg-ink); }
+    .ci-stat i {
+      font-style: normal; font-size: 11px; font-weight: 800;
+      color: var(--fg-faint); margin-right: 3px; vertical-align: 2px;
+    }
+    .col-item.locked .ci-stat { color: var(--fg-faint); }
+    /* Rarity sparkles stack down the left edge beside the glyph. */
+    .ci-spark {
+      position: absolute; top: 36px; left: 12px;
+      font-size: 11px; line-height: 1.15; pointer-events: none;
+    }
+    .ci-new { position: absolute; top: 10px; right: 12px; color: #F5B301; font-size: 15px; }
+    .col-item .ci-ico { line-height: 0; height: 48px; display: flex; align-items: center; margin-top: 2px; }
+    .col-item .ci-ico svg { width: 42px; height: 42px; }
     .ci-hatch {
-      width: 38px; height: 38px; border-radius: 50%;
-      background: repeating-linear-gradient(45deg, #C6C1B0 0 3px, transparent 3px 6.5px);
+      width: 40px; height: 40px; border-radius: 50%;
+      background: repeating-linear-gradient(45deg, rgba(61,89,100,.28) 0 3px, transparent 3px 6.5px);
     }
     .ci-name {
-      font-size: 12px; font-weight: 800; max-width: 100%;
+      font-size: 13px; font-weight: 700; color: var(--fg-slate); max-width: 100%;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .col-item.locked .ci-name { color: var(--label); letter-spacing: .2em; }
+    .col-item.locked .ci-name { color: var(--fg-faint); letter-spacing: .2em; }
+    /* The little underline bar carries the sound's own colour (locked: bare). */
+    .ci-bar { width: 38px; height: 3.5px; border-radius: 2px; background: rgba(61,89,100,.16); }
     .ci-clue {
-      margin-top: 2px; font-size: 10px; font-weight: 800; letter-spacing: .01em;
+      font-size: 10px; font-weight: 800; letter-spacing: .01em;
       color: var(--orange); max-width: 100%;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .ci-kind {
-      font-size: 9px; font-weight: 700; letter-spacing: .14em;
-      text-transform: uppercase; color: var(--label);
+      font-size: 9px; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--fg-faint);
     }
-    .ci-rar { font-size: 10px; font-weight: 800; }
-    .ci-new {
-      position: absolute; top: 8px; right: 8px; width: 9px; height: 9px;
-      border-radius: 50%; background: var(--orange);
-    }
+    .ci-kind b { font-weight: 800; }
     .col-item.pop { animation: padpop .26s ease-out; }
 
     /* sample picker */
     .picker-panel {
       width: min(560px, calc(100vw - 28px)); max-height: 80vh; overflow-y: auto;
       background: var(--paper); border-radius: 18px; padding: 18px 20px 20px;
-      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      border: 2px solid var(--ink);
       animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
     }
     .picker-grid {
@@ -1264,7 +1398,7 @@
       font-size: 13px; font-weight: 800; letter-spacing: .04em;
     }
     .jam-peers { margin-left: auto; font-size: 11px; font-weight: 800; color: var(--green); }
-    .jam-status { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #6E6A5E; }
+    .jam-status { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: #5E7C86; }
     .jam-wide { width: 100%; }
     .jam-join-row { display: flex; gap: 6px; margin: 8px 0 10px; }
     .jam-input {
@@ -1273,7 +1407,7 @@
       padding: 9px 12px; outline: none;
     }
     .jam-input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(39,45,94,.14); }
-    .jam-ips { font-size: 11px; color: #6E6A5E; line-height: 1.5; margin-bottom: 6px; word-break: break-all; }
+    .jam-ips { font-size: 11px; color: #5E7C86; line-height: 1.5; margin-bottom: 6px; word-break: break-all; }
     .jam-out-head {
       font-size: 9px; font-weight: 800; letter-spacing: .16em; color: var(--label);
       text-transform: uppercase; margin: 10px 0 6px;
@@ -1308,28 +1442,28 @@
     }
     .guide-num.fx { background: var(--orange); border-color: var(--orange); color: #fff; font-size: 10px; }
     .guide-row h4 { margin: 0 0 3px; font-size: 13px; font-weight: 800; }
-    .guide-row p { margin: 0; font-size: 13px; line-height: 1.5; color: #6E6A5E; }
+    .guide-row p { margin: 0; font-size: 13px; line-height: 1.5; color: #5E7C86; }
     .guide-credits {
       margin-top: 16px; padding-top: 14px; text-align: center;
       border-top: 1px solid var(--hair-soft);
     }
     .gc-head { font-size: 9px; font-weight: 800; letter-spacing: .22em; color: var(--label); margin-bottom: 6px; }
     .gc-names { margin: 0 0 6px; font-size: 13px; font-weight: 800; }
-    .gc-sub { margin: 0; font-size: 11px; line-height: 1.5; color: #6E6A5E; }
+    .gc-sub { margin: 0; font-size: 11px; line-height: 1.5; color: #5E7C86; }
 
     /* ---------------------------------------------------------------- */
     /* REVEAL MODAL — new sound unlocked                                */
     /* ---------------------------------------------------------------- */
     .modal {
       display: none; position: fixed; inset: 0; z-index: 70;
-      background: rgba(23,20,14,.35); backdrop-filter: blur(5px);
+      background: rgba(30,49,55,.35); backdrop-filter: blur(5px);
       align-items: center; justify-content: center;
     }
     .modal.active { display: flex; }
     .modal-card {
       position: relative; width: 300px; padding: 26px 30px;
       background: var(--paper); border-radius: 18px; text-align: center;
-      box-shadow: 0 20px 60px rgba(23,23,27,.25);
+      border: 2px solid var(--ink);
       animation: pop .22s cubic-bezier(.2,.9,.3,1.4);
     }
     @keyframes pop { from { transform: scale(.9); opacity: 0; } }

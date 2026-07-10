@@ -43,7 +43,7 @@ const ui = (function () {
 
     setupDeck();
     setupModuleControls();
-    setupModulePager();
+    setupModuleTabs();
     setupSequencerTransport();
     setupTopBar();
     setupProfilePanel();
@@ -91,20 +91,31 @@ const ui = (function () {
     if (eye) eye.classList.toggle('eye-open', !!live);
   }
 
-  // True while the swipe pager has claimed the current touch as a horizontal
-  // page-swipe. Vertical-drag controls consult it (via touchDragGate.moveOK /
-  // attachDragValue) and go inert so a page-swipe never tweaks their value.
-  let pagerOwnsGesture = false;
+  // The tabbed one-module-per-screen deck engages on touch-primary devices.
+  // `?mobile=1` forces it on in a desktop browser, so the phone layout can be
+  // checked on localhost without DevTools device emulation. CSS keys off the
+  // body class rather than the media query directly (see app.css .touch-deck).
+  const coarsePointer = window.matchMedia('(pointer: coarse)');
+  function isTouchDeck() {
+    return coarsePointer.matches || /[?&]mobile=1(&|$)/.test(location.search);
+  }
+  function applyTouchDeck() {
+    document.body.classList.toggle('touch-deck', isTouchDeck());
+  }
+  applyTouchDeck();
+  coarsePointer.addEventListener('change', applyTouchDeck);
 
-  // Swipe-deck pager (phone/tablet). Native-app tab feel: the page follows the
-  // finger while dragging and a release snaps EXACTLY one page forward or back
-  // (distance or flick velocity), never free-scrolling across several modules.
-  // CSS sets the deck to overflow:hidden, so this pager is the only thing that
+  // Tabbed module deck (phone/tablet). A scrollable strip of named tabs along
+  // the bottom replaces the old swipe pager: tapping a tab slides the deck to
+  // that module and an ink underline glides under the label. There is no swipe
+  // gesture anymore — horizontal drags inside a module belong to its controls
+  // (mixer crayons, XY pad, seq-scroll) with no arbitration needed.
+  // CSS sets the deck to overflow:hidden, so goTo below is the only thing that
   // moves it. On desktop (fine pointer) the deck is a grid and this is a no-op.
-  function setupModulePager() {
+  function setupModuleTabs() {
     const deck = document.querySelector('.deck');
-    const pager = document.getElementById('deck-pager');
-    if (!deck || !pager) return;
+    const bar = document.getElementById('deck-pager');
+    if (!deck || !bar) return;
 
     const LABELS = {
       'p-video': 'Scanner', 'p-mixer': 'Mixer', 'p-tempo': 'Tempo',
@@ -112,27 +123,50 @@ const ui = (function () {
       'p-seq': 'Sequencer', 'p-xy': 'FX Pad',
     };
     const pages = Array.prototype.slice.call(deck.querySelectorAll(':scope > .panel-rot-wrapper'));
-    const coarse = window.matchMedia('(pointer: coarse)');
     let current = 0;
 
-    pager.innerHTML = '';
-    const dots = pages.map(function (page, idx) {
+    bar.innerHTML = '';
+    const tabs = pages.map(function (page, idx) {
       const panel = page.querySelector('.panel');
       let label = 'Module ' + (idx + 1);
       if (panel) Object.keys(LABELS).forEach(function (c) { if (panel.classList.contains(c)) label = LABELS[c]; });
-      const dot = document.createElement('button');
-      dot.className = 'deck-dot' + (idx === 0 ? ' active' : '');
-      dot.title = label;
-      dot.setAttribute('aria-label', label);
-      dot.addEventListener('click', function () { goTo(idx); });
-      pager.appendChild(dot);
-      return dot;
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'deck-tab' + (idx === 0 ? ' active' : '');
+      tab.textContent = label;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+      tab.addEventListener('click', function () { goTo(idx); });
+      bar.appendChild(tab);
+      return tab;
     });
+    // The underline lives inside the strip so it scrolls with the tabs; JS
+    // places it because only JS knows the active tab's offset/width.
+    const ink = document.createElement('span');
+    ink.className = 'deck-tab-ink';
+    bar.appendChild(ink);
 
     function pageW() { return deck.clientWidth || 1; }
     function clampIdx(i) { return Math.max(0, Math.min(pages.length - 1, i)); }
-    function setDots(idx) {
-      dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
+    function setTabs(idx) {
+      tabs.forEach(function (t, i) {
+        t.classList.toggle('active', i === idx);
+        t.setAttribute('aria-selected', i === idx ? 'true' : 'false');
+      });
+      const t = tabs[idx];
+      if (!t) return;
+      ink.style.width = t.offsetWidth + 'px';
+      ink.style.transform = 'translateX(' + t.offsetLeft + 'px)';
+      // Keep the active label visible when the strip itself overflows.
+      const target = t.offsetLeft - (bar.clientWidth - t.offsetWidth) / 2;
+      try { bar.scrollTo({ left: target, behavior: 'smooth' }); }
+      catch (_) { bar.scrollLeft = target; }
+    }
+    // Late font load shifts label widths — re-seat the underline once settled.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { setTabs(current); });
+    } else {
+      setTabs(0);
     }
 
     // Ease scrollLeft to a page (rAF — scrollTo({smooth}) is unreliable on an
@@ -141,7 +175,7 @@ const ui = (function () {
     function goTo(idx) {
       idx = clampIdx(idx);
       current = idx;
-      setDots(idx);
+      setTabs(idx);
       if (anim) cancelAnimationFrame(anim);
       const from = deck.scrollLeft, to = idx * pageW(), t0 = performance.now();
       const DUR = 280;
@@ -153,76 +187,21 @@ const ui = (function () {
       anim = requestAnimationFrame(tick);
     }
 
-    // Keep the page aligned when the phone rotates / keyboard resizes.
+    // Keep the page aligned when the phone rotates / keyboard resizes, and
+    // re-seat the underline (tab offsets shift with the layout).
     window.addEventListener('resize', function () {
-      if (coarse.matches) deck.scrollLeft = current * pageW();
+      if (!isTouchDeck()) return;
+      deck.scrollLeft = current * pageW();
+      setTabs(current);
     });
 
     // Something else (e.g. applyTrackFocus's scrollIntoView) moved the deck —
-    // adopt whatever page it landed on so the dots stay honest.
+    // adopt whatever page it landed on so the tabs stay honest.
     deck.addEventListener('scroll', function () {
-      if (drag || anim) return;
+      if (anim) return;
       const idx = clampIdx(Math.round(deck.scrollLeft / pageW()));
-      if (idx !== current) { current = idx; setDots(idx); }
+      if (idx !== current) { current = idx; setTabs(idx); }
     }, { passive: true });
-
-    // Only controls that own HORIZONTAL gestures block paging (the XY pad is
-    // 2-D, seq-scroll pans sideways, hslider drags ew). Vertical-drag controls
-    // (faders, mixer crayons, tempo chips) lose to a horizontal swipe instead —
-    // pagerOwnsGesture flips and their moveOK gate goes dead, like a native
-    // pager cancelling a child's touch.
-    const OWN_DRAG = '.xy-pad, .seq-scroll, .hslider, input, select, textarea';
-
-    let drag = null;
-    deck.addEventListener('touchstart', function (e) {
-      drag = null;
-      pagerOwnsGesture = false;
-      if (!coarse.matches || e.touches.length !== 1) return;
-      if (e.target.closest(OWN_DRAG)) return;
-      if (e.target.closest('.module-fullscreen')) return;
-      // The mixer row only owns the gesture when it genuinely overflows and
-      // can scroll sideways itself.
-      const mixArea = e.target.closest('.mix-area');
-      if (mixArea && mixArea.scrollWidth > mixArea.clientWidth + 1) return;
-      if (anim) { cancelAnimationFrame(anim); anim = null; }
-      drag = {
-        x: e.touches[0].clientX, y: e.touches[0].clientY,
-        startScroll: deck.scrollLeft, axis: null,
-        lastX: e.touches[0].clientX, lastT: performance.now(), vx: 0,
-      };
-    }, { passive: true });
-
-    deck.addEventListener('touchmove', function (e) {
-      if (!drag) return;
-      const x = e.touches[0].clientX, y = e.touches[0].clientY;
-      const dx = x - drag.x, dy = y - drag.y;
-      if (!drag.axis) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // undecided yet
-        drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-        if (drag.axis === 'y') { drag = null; return; }   // vertical: page scrolls itself
-        pagerOwnsGesture = true; // horizontal: mute vertical-drag controls
-      }
-      e.preventDefault(); // horizontal: the pager owns this gesture
-      deck.scrollLeft = Math.max(0, Math.min((pages.length - 1) * pageW(),
-        drag.startScroll - dx));
-      const now = performance.now();
-      if (now - drag.lastT > 0) drag.vx = (x - drag.lastX) / (now - drag.lastT);
-      drag.lastX = x; drag.lastT = now;
-    }, { passive: false });
-
-    function endDrag() {
-      pagerOwnsGesture = false;
-      if (!drag || drag.axis !== 'x') { drag = null; return; }
-      const moved = deck.scrollLeft - drag.startScroll; // >0 means toward next
-      const FLICK = 0.35;                               // px/ms
-      let idx = current;
-      if (moved > pageW() * 0.22 || drag.vx < -FLICK) idx = current + 1;
-      else if (moved < -pageW() * 0.22 || drag.vx > FLICK) idx = current - 1;
-      drag = null;
-      goTo(idx);
-    }
-    deck.addEventListener('touchend', endDrag);
-    deck.addEventListener('touchcancel', endDrag);
   }
 
   function setupModuleControls() {
@@ -381,7 +360,7 @@ const ui = (function () {
   // XY panel, which is where the performance effects live.
   // `scroll` is only true on a USER tap — rebuild restores (renderSequencer at
   // boot / after jam edits) must never scrollIntoView, because that drags the
-  // mobile swipe deck horizontally to the sequencer page (found in verification).
+  // mobile deck horizontally to the sequencer page (found in verification).
   function applyTrackFocus(scroll) {
     const blocks = document.querySelectorAll('#sequencer-tracks .track-block');
     blocks.forEach(function (b, idx) {
@@ -397,10 +376,6 @@ const ui = (function () {
       const b = blocks[+activeTrackIndex];
       if (b && scroll) b.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-  }
-
-  function switchToTab(name) {
-    // Tabs no longer exist; user swipes manually. This is a stub for old code.
   }
 
   // Drive the XY FX cursor from a remote peer's move (jam sync). Kept at module
@@ -788,10 +763,11 @@ const ui = (function () {
         };
       });
 
-    // Progress readout: found / total.
+    // Progress readout: found / total, sitting under the title like a tab count.
     const found = items.filter(function (it) { return it.unlocked; }).length;
     document.getElementById('col-count').innerHTML =
-      SEG(found, 16) + '<span class="col-of">OF ' + items.length + '</span>';
+      '<span class="col-n">' + found + '</span>' +
+      '<span class="col-of"> / ' + items.length + ' FOUND</span>';
 
     // Filter chips. Counts include locked sounds — "more out there to find".
     const counts = {};
@@ -836,16 +812,28 @@ const ui = (function () {
     shown.forEach(function (item) {
       const card = document.createElement('button');
       const rar = RARITIES[item.d.rarity];
-      const rarHtml = '<span class="ci-rar" style="color:' + rar.color + '">' +
-        (rar.stars ? rar.stars + ' ' : '') + rar.label + '</span>';
+      // Rarity reads as a sparkle cluster stacked beside the glyph (creature-
+      // collector style), not as a text row. Common = no sparkles.
+      const sparkHtml = rar.stars
+        ? '<span class="ci-spark" style="color:' + rar.color + '" title="' + rar.label + '">' +
+          rar.stars.split('').map(function () { return '✦'; }).join('<br>') + '</span>'
+        : '';
+      // Rarity IS the headline of a collector card — it sits at the top in its
+      // tier colour (locked cards show it too: knowing a slot hides a Mythic is
+      // exactly what sends you hunting). The old ♪-note header is gone.
+      const statHtml = '<span class="ci-stat" style="color:' + rar.color + '">' +
+        rar.label + '</span>';
+      const kindHtml = '<span class="ci-kind">' + item.d.type.label + '</span>';
 
       if (item.unlocked) {
         card.className = 'col-item';
         card.innerHTML =
+          statHtml + sparkHtml +
+          (item.key === newestKey ? '<span class="ci-new" title="Newest find">★</span>' : '') +
           '<span class="ci-ico" style="color:' + item.d.type.color + '">' + item.d.type.icon + '</span>' +
           '<span class="ci-name"></span>' +
-          '<span class="ci-kind">' + item.d.type.label + '</span>' + rarHtml +
-          (item.key === newestKey ? '<span class="ci-new"></span>' : '');
+          '<span class="ci-bar" style="background:' + item.d.type.color + '"></span>' +
+          kindHtml;
         card.querySelector('.ci-name').textContent = item.info.displayName;
         card.title = 'Play ' + item.info.displayName;
         card.addEventListener('click', function () {
@@ -858,10 +846,12 @@ const ui = (function () {
         const clue = objectClue(item.key);
         card.className = 'col-item locked';
         card.innerHTML =
+          statHtml + sparkHtml +
           '<span class="ci-ico"><span class="ci-hatch"></span></span>' +
           '<span class="ci-name">? ? ?</span>' +
-          '<span class="ci-kind">' + item.d.type.label + '</span>' + rarHtml +
-          '<span class="ci-clue"></span>';
+          '<span class="ci-bar"></span>' +
+          '<span class="ci-clue"></span>' +
+          kindHtml;
         // Clue: the real-world object you have to scan to unlock this sound.
         card.querySelector('.ci-clue').textContent = '🔍 Scan a ' + clue;
         card.title = 'Scan a ' + clue + ' in the real world to unlock this sound';
@@ -1034,11 +1024,21 @@ const ui = (function () {
     fx:      { label: 'FX',      icon: icon(ICON_PATHS.fx),      color: '#6F6F6C', tint: 'rgba(111,111,108,.16)' },
   };
 
+  // Ten collector tiers, weighted in describeSample so the top ones are
+  // genuinely hard to hit (Common ~22% of the pool, Grail ~2%). Colours climb
+  // from quiet gray through cool blues/violets into hot golds and finally
+  // near-black, so a card's headline colour alone signals how big the find is.
   const RARITIES = {
-    common:    { label: 'Common',    stars: '',    color: '#8E8E8A', order: 0 },
-    rare:      { label: 'Rare',      stars: '★',   color: '#4C86AB', order: 1 },
-    epic:      { label: 'Epic',      stars: '★★',  color: '#B02058', order: 2 },
-    legendary: { label: 'Legendary', stars: '★★★', color: '#C6A12D', order: 3 },
+    common:    { label: 'Common',     stars: '',      color: '#8E8E8A', order: 0 },
+    uncommon:  { label: 'Uncommon',   stars: '★',     color: '#3FA34D', order: 1 },
+    scarce:    { label: 'Scarce',     stars: '★',     color: '#0E9594', order: 2 },
+    rare:      { label: 'Rare',       stars: '★★',    color: '#2F5DE0', order: 3 },
+    veryrare:  { label: 'Very Rare',  stars: '★★',    color: '#4438CA', order: 4 },
+    epic:      { label: 'Epic',       stars: '★★★',   color: '#7C5CFF', order: 5 },
+    elite:     { label: 'Elite',      stars: '★★★',   color: '#B02058', order: 6 },
+    legendary: { label: 'Legendary',  stars: '★★★★',  color: '#E67E22', order: 7 },
+    mythic:    { label: 'Mythic',     stars: '★★★★',  color: '#C6A12D', order: 8 },
+    grail:     { label: 'Grail',      stars: '★★★★★', color: '#14181A', order: 9 },
   };
 
   // A pool of distinct flat glyphs. Every SOUND (not just every type) picks one
@@ -1093,15 +1093,24 @@ const ui = (function () {
     // Deterministic flavour: hash the key so a sample always looks the same.
     let h = 0;
     for (let i = 0; i < objectType.length; i++) h = (h * 31 + objectType.charCodeAt(i)) >>> 0;
-    const tier = h % 16;
-    let rarity = 'common';
-    if (tier === 0)      rarity = 'legendary';
-    else if (tier <= 2)  rarity = 'epic';
-    else if (tier <= 6)  rarity = 'rare';
+    // Percentile buckets over the hash: ten tiers, rarer as you go up.
+    const tier = h % 100;
+    let rarity = 'common';                       // 22%
+    if      (tier < 2)  rarity = 'grail';        //  2%
+    else if (tier < 5)  rarity = 'mythic';       //  3%
+    else if (tier < 10) rarity = 'legendary';    //  5%
+    else if (tier < 17) rarity = 'elite';        //  7%
+    else if (tier < 25) rarity = 'epic';         //  8%
+    else if (tier < 35) rarity = 'veryrare';     // 10%
+    else if (tier < 47) rarity = 'rare';         // 12%
+    else if (tier < 61) rarity = 'scarce';       // 14%
+    else if (tier < 78) rarity = 'uncommon';     // 17%
 
     // Decorative MIDI-style note + choke group, mirroring Emergent Drums' header.
     const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    const note  = NOTES[h % 12] + (1 + (h >> 4) % 4);
+    // >>> not >>: h is a uint32, and a signed shift on a hash past 2^31 went
+    // negative — collection cards briefly showed impossible notes like "D-2".
+    const note  = NOTES[h % 12] + (1 + (h >>> 4) % 4);
     const choke = (h % 6 === 0) ? 'None' : ('Self');
 
     // Give this exact sound its own colour + glyph, overriding the shared type
@@ -1129,7 +1138,7 @@ const ui = (function () {
 
     const data = audioEngine.getWaveform(objectType);
     if (!data) {
-      ctx.strokeStyle = 'rgba(23,23,27,.18)';
+      ctx.strokeStyle = 'rgba(61,89,100,.2)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
       return;
@@ -1150,7 +1159,7 @@ const ui = (function () {
     }
     ctx.globalAlpha = 1;
     // faint centre line
-    ctx.strokeStyle = 'rgba(23,23,27,.12)';
+    ctx.strokeStyle = 'rgba(61,89,100,.14)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
   }
@@ -1492,7 +1501,7 @@ const ui = (function () {
       const b = document.createElement('button');
       b.className = 'picker-item' + ((pad && pad.key === key) ? ' current' : '');
       b.innerHTML =
-        '<span class="pi-ico" style="color:' + (isMystery ? '#8E8977' : item.d.type.color) + '">' +
+        '<span class="pi-ico" style="color:' + (isMystery ? '#8FA6AC' : item.d.type.color) + '">' +
           (isMystery ? '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M9 9a3 3 0 116 0c0 2-3 2-3 4"/><circle cx="12" cy="18" r="1.3"/><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>' : item.d.type.icon) +
         '</span>' +
         '<span class="pi-name"></span>';
@@ -1890,20 +1899,29 @@ const ui = (function () {
       const row = document.createElement('div');
       row.className = 'track-row';
 
-      // Split into sticky icon and scrolling text
+      // Sticky icon gutter: the track's glyph on top, and below it a real,
+      // bordered TUNE button that opens the per-step lanes. It used to be a tiny
+      // ▼ hidden inside the icon — invisible as a control; a separate button
+      // with its own border reads as "tap me".
       const icoWrap = document.createElement('div');
       icoWrap.className = 'tl-ico-wrap';
-      icoWrap.style.cursor = 'pointer';
-      icoWrap.title = 'Per-step pitch, velocity, gate & FX';
       icoWrap.innerHTML = '<span class="tl-ico" style="background:' + d.type.color + '">' +
-        d.type.icon + '<span class="adv-indicator" style="font-size:8px; margin-left:3px; opacity:0.6; display:inline-block; transition:transform 0.2s;">▼</span></span>';
-      
+        d.type.icon + '</span>';
+
+      const advBtn = document.createElement('button');
+      advBtn.className = 'track-adv-btn';
+      advBtn.title = 'Per-step pitch, velocity, gate & FX';
+      advBtn.innerHTML = 'TUNE<span class="adv-indicator">▾</span>';
       if (advOpenTracks[track.id]) { block.classList.add('adv-open'); }
-      icoWrap.addEventListener('click', function () {
+      advBtn.setAttribute('aria-expanded', advOpenTracks[track.id] ? 'true' : 'false');
+      advBtn.addEventListener('click', function () {
         const open = !block.classList.contains('adv-open');
+        if (open) ensureAdv(); // build the lanes on first open (see below)
         block.classList.toggle('adv-open', open);
+        advBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         advOpenTracks[track.id] = open;
       });
+      icoWrap.appendChild(advBtn);
       row.appendChild(icoWrap);
 
       const txtWrap = document.createElement('div');
@@ -1978,6 +1996,21 @@ const ui = (function () {
       block.appendChild(row);
 
       // ----- advanced per-step lanes: PITCH · VEL · GATE · FX -----
+      // Built lazily — only when a row's advanced panel is actually opened. Each
+      // row's lanes are ~130 draggable cells that each wire up their own pointer /
+      // wheel / dblclick listeners, and renderSequencer() rebuilds every row from
+      // scratch every time a track is added. Building all of them eagerly for
+      // every row (even the ones collapsed by default) blocked the main thread
+      // long enough to overrun Tone's scheduler lookahead — heard as a beat of
+      // audio dropping out the moment a new track landed. Lazy building keeps a
+      // full re-render cheap; laneSetters/laneEls stay in the row closure so the
+      // Jam single-cell events below can still find them once built.
+      let advBuilt = false;
+      const laneSetters = {};
+      const laneEls = {};
+      function ensureAdv() {
+      if (advBuilt) return;
+      advBuilt = true;
       const adv = document.createElement('div');
       adv.className = 'track-adv';
 
@@ -2030,8 +2063,6 @@ const ui = (function () {
       // Generic draggable lane. Drag a cell up/down, scroll, or double / right-click
       // to reset. Cells only show a value when they deviate from default, keeping
       // the lane visually quiet.
-      const laneSetters = {};
-      const laneEls = {};
       function buildLane(spec) {
         const lane = document.createElement('div');
         lane.className = 'pitch-lane';
@@ -2121,7 +2152,7 @@ const ui = (function () {
                   min: -12, max: 12, unit: 1, px: 6, wheel: 1, reset: 0, round: true, unitLabel: ' st',
                   fmt: function (v) { return v === 0 ? '0' : (v > 0 ? '+' + v : '' + v); }, nz: function (v) { return v !== 0; } });
       buildLane({ kind: 'vel', label: 'Vel', get: audioEngine.getStepVel, set: Jam.setStepVel,
-                  min: 0, max: 1, unit: 0.01, px: 2.5, wheel: 0.05, reset: 1, round: false, unitLabel: '%',
+                  min: 0, max: 1, unit: 0.01, px: 1.4, wheel: 0.05, reset: 1, round: false, unitLabel: '%',
                   fmt: function (v) { return String(Math.round(v * 100)); }, nz: function (v) { return v < 0.995; } });
       buildLane({ kind: 'len', label: 'Gate', get: audioEngine.getStepLen, set: Jam.setStepLen,
                   min: 1, max: 16, unit: 1, px: 8, wheel: 1, reset: 1, round: true, unitLabel: '',
@@ -2153,6 +2184,11 @@ const ui = (function () {
         });
       }
       applyFxVisual(curFxType);
+      } // ---- end ensureAdv ----
+
+      // A row expanded before this re-render keeps its lanes; a collapsed row
+      // pays nothing until the user opens it.
+      if (advOpenTracks[track.id]) ensureAdv();
 
       // Register this row's DOM so single-cell Jam events can update it in place.
       trackDom[track.id] = {
@@ -2404,7 +2440,6 @@ const ui = (function () {
     return {
       engaged: true,
       moveOK: function (ev) {
-        if (pagerOwnsGesture) return false; // swipe pager took this gesture
         if (ev.cancelable) ev.preventDefault();
         return true;
       },
@@ -2423,10 +2458,6 @@ const ui = (function () {
       const startV = get();
       let moved = false;
       function move(ev) {
-        if (pagerOwnsGesture) {           // swipe pager took this gesture —
-          if (moved) { apply(startV); moved = false; } // undo any stray nudge
-          return;
-        }
         if (ev.cancelable) ev.preventDefault();
         const d = Math.round((startY - ev.clientY) / pxPerStep);
         if (d !== 0) moved = true;

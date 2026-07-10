@@ -4,16 +4,16 @@
     "displayName": "Cowbell 01 Dysfunctional"
   },
   "bicycle": {
-    "sampleFile": "Hat_13_-_Gray_Area.wav",
-    "displayName": "Hat 13 Gray Area"
+    "sampleFile": "HAT_OPEN_SLICE.wav",
+    "displayName": "Hat Open Slice"
   },
   "car": {
-    "sampleFile": "Horn-y.wav",
-    "displayName": "Horn Y"
+    "sampleFile": "LEAD_CLEAN_STAB_F.wav",
+    "displayName": "Lead Clean Stab F"
   },
   "motorcycle": {
-    "sampleFile": "OBJCont_Flask_glass_figuredbottle_realcork_liquid_remove_squeak_slosh_alt4_EWKR.wav",
-    "displayName": "Flask Glass Figuredbottle Re"
+    "sampleFile": "fx_faller_02.wav",
+    "displayName": "Fx Faller 02"
   },
   "airplane": {
     "sampleFile": "OLIVER_bass_looncan_C.wav",
@@ -56,44 +56,44 @@
     "displayName": "Kick Dirty Crunch"
   },
   "bird": {
-    "sampleFile": "OLIVER_kick_hard_gravel.wav",
-    "displayName": "Kick Hard Gravel"
+    "sampleFile": "SeResourceStd2nd_00000026.wav",
+    "displayName": "Found Sound 26"
   },
   "cat": {
-    "sampleFile": "OLIVER_kick_punchy_sharp.wav",
-    "displayName": "Kick Punchy Sharp"
+    "sampleFile": "SeResourceStd2nd_00000035.wav",
+    "displayName": "Found Sound 35"
   },
   "dog": {
-    "sampleFile": "OLIVER_kick_warm_mixready_low_blow.wav",
-    "displayName": "Kick Warm Mixready Low Blow"
+    "sampleFile": "SeResourceStd2nd_00000053.wav",
+    "displayName": "Found Sound 53"
   },
   "horse": {
-    "sampleFile": "OLIVER_kick_weird_lapsung_synth_kick_A.wav",
-    "displayName": "Kick Weird Lapsung Synth Kic"
+    "sampleFile": "SeResourceStd2nd_00000092.wav",
+    "displayName": "Found Sound 92"
   },
   "sheep": {
-    "sampleFile": "OLIVER_kick_weird_metal_bang.wav",
-    "displayName": "Kick Weird Metal Bang"
+    "sampleFile": "SeResourceStd2nd_00000108.wav",
+    "displayName": "Found Sound 108"
   },
   "cow": {
-    "sampleFile": "OLIVER_percussion_block.wav",
-    "displayName": "Percussion Block"
+    "sampleFile": "SeResourceStd2nd_00000168.wav",
+    "displayName": "Found Sound 168"
   },
   "elephant": {
-    "sampleFile": "OLIVER_percussion_distressed_tom_C.wav",
-    "displayName": "Percussion Distressed Tom C"
+    "sampleFile": "SeResourceStd2nd_00000204.wav",
+    "displayName": "Found Sound 204"
   },
   "bear": {
-    "sampleFile": "OLIVER_percussion_popper.wav",
-    "displayName": "Percussion Popper"
+    "sampleFile": "SeResourceStd2nd_00000206.wav",
+    "displayName": "Found Sound 206"
   },
   "zebra": {
-    "sampleFile": "OLIVER_snare_modern_dnmo_block.wav",
-    "displayName": "Snare Modern Dnmo Block"
+    "sampleFile": "SeResourceStd2nd_00000232.wav",
+    "displayName": "Found Sound 232"
   },
   "giraffe": {
-    "sampleFile": "OLIVER_snare_modern_mixready_layer_magic.wav",
-    "displayName": "Snare Modern Mixready Layer"
+    "sampleFile": "SeResourceStd2nd_00000270.wav",
+    "displayName": "Found Sound 270"
   },
   "backpack": {
     "sampleFile": "OLIVER_snare_modern_mixready_metallic_short.wav",
@@ -116,8 +116,8 @@
     "displayName": "Snare Noise Crack"
   },
   "frisbee": {
-    "sampleFile": "OLIVER_snare_punchy_beef.wav",
-    "displayName": "Snare Punchy Beef"
+    "sampleFile": "SeResourceStd2nd_00000448.wav",
+    "displayName": "Found Sound 448"
   },
   "skis": {
     "sampleFile": "OLIVER_snare_rimshot_hard.wav",
@@ -128,8 +128,8 @@
     "displayName": "Snare Short Mixready Dnb Vog"
   },
   "sports_ball": {
-    "sampleFile": "OLIVER_tom_electronic_cheap_F.wav",
-    "displayName": "Tom Electronic Cheap F"
+    "sampleFile": "SeResourceStd2nd_00000581.wav",
+    "displayName": "Found Sound 581"
   },
   "kite": {
     "sampleFile": "OOF.wav",
@@ -156,44 +156,44 @@
     "displayName": "Snare 04 Got It Good"
   },
   "bottle": {
-    "sampleFile": "bass_a_04.wav",
-    "displayName": "Bass A 04"
+    "sampleFile": "BASS_BONK_C.wav",
+    "displayName": "Bass Bonk C"
   },
   "wine_glass": {
-    "sampleFile": "bass_b_07.wav",
-    "displayName": "Bass B 07"
+    "sampleFile": "5th_Crystal_Bell.wav",
+    "displayName": "5th Crystal Bell"
   },
   "cup": {
-    "sampleFile": "bass_c_01.wav",
-    "displayName": "Bass C 01"
+    "sampleFile": "BASS_PLONK_F.wav",
+    "displayName": "Bass Plonk F"
   },
   "fork": {
-    "sampleFile": "bass_d_05.wav",
-    "displayName": "Bass D 05"
+    "sampleFile": "SNARE_METALLIQUE.wav",
+    "displayName": "Snare Metallique"
   },
   "knife": {
-    "sampleFile": "bass_e_02.wav",
-    "displayName": "Bass E 02"
+    "sampleFile": "BASS_TUBE_C.wav",
+    "displayName": "Bass Tube C"
   },
   "spoon": {
-    "sampleFile": "bass_f_06.wav",
-    "displayName": "Bass F 06"
+    "sampleFile": "BASS_WUMP_C.wav",
+    "displayName": "Bass Wump C"
   },
   "bowl": {
-    "sampleFile": "bass_g_03.wav",
-    "displayName": "Bass G 03"
+    "sampleFile": "BASS_EYE_TWITCH_D.wav",
+    "displayName": "Bass Eye Twitch D"
   },
   "banana": {
-    "sampleFile": "clap_layer_01.wav",
-    "displayName": "Clap Layer 01"
+    "sampleFile": "CLAP_GATED.wav",
+    "displayName": "Clap Gated"
   },
   "apple": {
-    "sampleFile": "clap_layer_02.wav",
-    "displayName": "Clap Layer 02"
+    "sampleFile": "CLAP_SYNTHETIC_PPL.wav",
+    "displayName": "Clap Synthetic Ppl"
   },
   "sandwich": {
-    "sampleFile": "clap_layer_03.wav",
-    "displayName": "Clap Layer 03"
+    "sampleFile": "SeResourceStd2nd_00000020.wav",
+    "displayName": "Found Sound 20"
   },
   "orange": {
     "sampleFile": "cowbell_metal_01.wav",
@@ -212,112 +212,112 @@
     "displayName": "Hat Closed 01"
   },
   "pizza": {
-    "sampleFile": "hat_closed_02.wav",
-    "displayName": "Hat Closed 02"
+    "sampleFile": "CYMBAL_HISS.wav",
+    "displayName": "Cymbal Hiss"
   },
   "donut": {
     "sampleFile": "hat_open_04.wav",
     "displayName": "Hat Open 04"
   },
   "cake": {
-    "sampleFile": "hat_open_05.wav",
-    "displayName": "Hat Open 05"
+    "sampleFile": "CHORD_PANFLUTE_C.wav",
+    "displayName": "Chord Panflute C"
   },
   "chair": {
-    "sampleFile": "hat_pedal_06.wav",
-    "displayName": "Hat Pedal 06"
+    "sampleFile": "tom_a_04.wav",
+    "displayName": "Tom A 04"
   },
   "couch": {
-    "sampleFile": "hat_tick_03.wav",
-    "displayName": "Hat Tick 03"
+    "sampleFile": "CLAUDE_-_kick13.wav",
+    "displayName": "Kick13"
   },
   "potted_plant": {
-    "sampleFile": "kick_analog_01.wav",
-    "displayName": "Kick Analog 01"
+    "sampleFile": "KICK_BOOM.wav",
+    "displayName": "Kick Boom"
   },
   "bed": {
-    "sampleFile": "kick_boom_06.wav",
-    "displayName": "Kick Boom 06"
+    "sampleFile": "CLAUDE_-_kick17.wav",
+    "displayName": "Kick17"
   },
   "dining_table": {
     "sampleFile": "kick_click_07.wav",
     "displayName": "Kick Click 07"
   },
   "toilet": {
-    "sampleFile": "kick_deep_02.wav",
-    "displayName": "Kick Deep 02"
+    "sampleFile": "NUAN_SONAR_-_Girth_Low_Kick.wav",
+    "displayName": "Girth Low Kick"
   },
   "tv": {
     "sampleFile": "kick_punch_03.wav",
     "displayName": "Kick Punch 03"
   },
   "laptop": {
-    "sampleFile": "kick_sub_04.wav",
-    "displayName": "Kick Sub 04"
+    "sampleFile": "LEAD_GLASSY_C.wav",
+    "displayName": "Lead Glassy C"
   },
   "mouse": {
-    "sampleFile": "kick_tight_05.wav",
-    "displayName": "Kick Tight 05"
+    "sampleFile": "cursor.wav",
+    "displayName": "Cursor"
   },
   "remote": {
-    "sampleFile": "kick_warm_08.wav",
-    "displayName": "Kick Warm 08"
+    "sampleFile": "PERC_ATARI_LOW.wav",
+    "displayName": "Perc Atari Low"
   },
   "keyboard": {
     "sampleFile": "perc_blip_01.wav",
     "displayName": "Perc Blip 01"
   },
   "cell_phone": {
-    "sampleFile": "perc_blip_02.wav",
-    "displayName": "Perc Blip 02"
+    "sampleFile": "LEAD_BELL_C.wav",
+    "displayName": "Lead Bell C"
   },
   "microwave": {
-    "sampleFile": "perc_blip_03.wav",
-    "displayName": "Perc Blip 03"
+    "sampleFile": "Sample_0024.wav",
+    "displayName": "Found Sound 24"
   },
   "oven": {
-    "sampleFile": "perc_blip_04.wav",
-    "displayName": "Perc Blip 04"
+    "sampleFile": "BFNK_-_Snare_01.wav",
+    "displayName": "Snare 01"
   },
   "toaster": {
-    "sampleFile": "perc_blip_05.wav",
-    "displayName": "Perc Blip 05"
+    "sampleFile": "RIM_FRACTURE_1.wav",
+    "displayName": "Rim Fracture 1"
   },
   "sink": {
-    "sampleFile": "perc_blip_06.wav",
-    "displayName": "Perc Blip 06"
+    "sampleFile": "Glorkglunk_-_resnare_6.wav",
+    "displayName": "Resnare 6"
   },
   "refrigerator": {
-    "sampleFile": "perc_blip_07.wav",
-    "displayName": "Perc Blip 07"
+    "sampleFile": "Sample_0019.wav",
+    "displayName": "Found Sound 19"
   },
   "book": {
-    "sampleFile": "perc_blip_08.wav",
-    "displayName": "Perc Blip 08"
+    "sampleFile": "Glorkglunk_-_snare_15.wav",
+    "displayName": "Snare 15"
   },
   "clock": {
-    "sampleFile": "snare_brush_07.wav",
-    "displayName": "Snare Brush 07"
+    "sampleFile": "PERC_CLINK.wav",
+    "displayName": "Perc Clink"
   },
   "vase": {
-    "sampleFile": "snare_clap_04.wav",
-    "displayName": "Snare Clap 04"
+    "sampleFile": "SNARE_METAL_RING.wav",
+    "displayName": "Snare Metal Ring"
   },
   "scissors": {
-    "sampleFile": "snare_crack_01.wav",
-    "displayName": "Snare Crack 01"
+    "sampleFile": "CLAUDE_-_distorted_snare07.wav",
+    "displayName": "Distorted Snare07"
   },
   "teddy_bear": {
-    "sampleFile": "snare_deep_08.wav",
-    "displayName": "Snare Deep 08"
+    "sampleFile": "Hlessi_-_Supa_Snare.wav",
+    "displayName": "Supa Snare"
   },
   "hair_drier": {
-    "sampleFile": "snare_fat_02.wav",
-    "displayName": "Snare Fat 02"
+    "sampleFile": "fx_arp_04.wav",
+    "displayName": "Fx Arp 04"
   },
   "toothbrush": {
-    "sampleFile": "snare_noise_06.wav",
-    "displayName": "Snare Noise 06"
+    "sampleFile": "Glorkglunk_-_snare_9.wav",
+    "displayName": "Snare 9"
   },
   "_default": {
     "sampleFile": "Cowbell_01_-_DYSFUNCTIONAL.wav",

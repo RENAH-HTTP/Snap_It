@@ -80,7 +80,7 @@ window.Visualizer = (function () {
       // Signal now shows only the live orange output trace below.)
 
       // Faint centre guide, always present so the panel never reads as "off".
-      ctx.strokeStyle = 'rgba(23,23,27,.14)';
+      ctx.strokeStyle = 'rgba(61,89,100,.16)';
       ctx.lineWidth = dpr;
       ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
 

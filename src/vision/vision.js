@@ -8,10 +8,19 @@ window.Vision = (() => {
 
   const SCORE_THRESHOLD = 0.60;  // min confidence to accept a detection
   const DEBOUNCE_MS     = 2500;  // min gap between two scans of the same object
-  const DETECT_EVERY_MS = 90;    // cap detection to ~11 Hz — running model.detect()
-                                 // flat-out on every animation frame pegs a phone
-                                 // GPU and makes the whole UI crawl. ~11 Hz is
-                                 // still instant-feeling for scanning objects.
+  const DETECT_EVERY_MS = 90;    // fastest allowed detection cadence (~11 Hz).
+                                 // The loop paces itself off the measured cost of
+                                 // a model pass (see detectLoop), so a slow
+                                 // machine automatically detects less often
+                                 // instead of pegging the GPU and freezing the UI.
+  const DETECT_MAX_MS   = 480;   // never back off past ~2 Hz — scanning should
+                                 // still feel live on the slowest laptop
+  const DETECT_WIDTH    = 320;   // frames are downscaled to this width before
+                                 // detection; COCO-SSD shrinks its input anyway,
+                                 // so uploading full camera frames to the GPU
+                                 // each pass was pure waste
+  const SUSPEND_AFTER_MS = 3000; // how long the scanner can be out of sight
+                                 // before the camera is quietly parked
 
   // Classes we never react to or draw (people walk in front of the camera a lot).
   const IGNORED_CLASSES = { 'person': true };
@@ -45,6 +54,20 @@ window.Vision = (() => {
   let currentDeviceId = null;
   const lastScan = {};   // sampleKey -> timestamp, for per-object debounce
 
+  // Auto-suspend: the camera is parked (tracks stopped, LED off) while the tab
+  // is backgrounded or the scanner panel is scrolled out of view, and revived
+  // when it comes back. `running` stays true — suspension is invisible to the
+  // rest of the app.
+  let suspended    = false;
+  let resuming     = false;  // an openStream() is in flight
+  let panelVisible = true;   // is the scanner panel on screen (IntersectionObserver)
+  let suspendTimer = null;
+  let watching     = false;  // visibility listeners attached (once)
+
+  let detCanvas = null;      // downscaled copy of the frame handed to the model
+  let detCtx    = null;
+  let avgDetectMs = 50;      // rolling cost of one model pass, drives the pacing
+
   // ── lazy dependency loading ─────────────────────────────────────────────────
   // TensorFlow.js and COCO-SSD are large; injecting them only when the scanner
   // first runs keeps the app's initial load fast on phones / very old laptops.
@@ -70,10 +93,17 @@ window.Vision = (() => {
   // ── camera plumbing ─────────────────────────────────────────────────────────
 
   async function openStream(deviceId) {
-    const constraints = deviceId
-      ? { video: { deviceId: { exact: deviceId } }, audio: false }
-      : { video: true, audio: false };
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Ask for a modest feed. Bare `video: true` hands back 1080p30 on most
+    // laptops, and just compositing that video element burned more of the frame
+    // budget than detection itself. 640×480@15 is plenty for object scanning
+    // (`ideal` never rejects — a camera that can't comply gives its closest).
+    const video = {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 15, max: 24 },
+    };
+    if (deviceId) video.deviceId = { exact: deviceId };
+    stream = await navigator.mediaDevices.getUserMedia({ video: video, audio: false });
     videoEl.srcObject = stream;
     await new Promise(resolve => videoEl.addEventListener('loadedmetadata', resolve, { once: true }));
     await videoEl.play();
@@ -97,6 +127,11 @@ window.Vision = (() => {
   // Swap to another camera; the detection loop keeps running on the new feed.
   async function setCamera(deviceId) {
     if (!videoEl || !deviceId || deviceId === currentDeviceId) return;
+    if (suspended) {
+      // Parked — just remember the choice; resume will open this device.
+      currentDeviceId = deviceId;
+      return;
+    }
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
@@ -148,42 +183,148 @@ window.Vision = (() => {
     }
 
     running = true;
+    suspended = false;
+    watchVisibility();
     setStatus('Ready — point camera at an object');
     detectLoop();
   }
 
   function stop() {
     running = false;
+    suspended = false;
+    if (suspendTimer) { clearTimeout(suspendTimer); suspendTimer = null; }
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
     }
   }
 
+  // ── auto-suspend while out of sight ─────────────────────────────────────────
+
+  function suspend(reason) {
+    if (!running || suspended) return;
+    suspended = true;
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    setStatus('Camera paused — ' + reason);
+    console.log('[Vision] camera suspended (' + reason + ')');
+  }
+
+  async function resumeIfNeeded() {
+    if (!running || !suspended || resuming) return;
+    if (document.hidden || !panelVisible) return;
+    resuming = true;
+    try {
+      await openStream(currentDeviceId);
+      suspended = false;
+      setStatus('Ready — point camera at an object');
+      console.log('[Vision] camera resumed');
+    } catch (err) {
+      console.error('[Vision] camera resume failed:', err);
+      setStatus('Camera unavailable — ' + err.message);
+    }
+    resuming = false;
+  }
+
+  // Wait a moment before cutting the stream so flicking between modules doesn't
+  // bounce the camera (a cold reopen can take up to a second).
+  function scheduleSuspend(reason) {
+    if (suspendTimer || suspended || !running) return;
+    suspendTimer = setTimeout(function () {
+      suspendTimer = null;
+      if (document.hidden || !panelVisible) suspend(reason);
+    }, SUSPEND_AFTER_MS);
+  }
+
+  function cancelSuspend() {
+    if (suspendTimer) { clearTimeout(suspendTimer); suspendTimer = null; }
+  }
+
+  function watchVisibility() {
+    if (watching) return;
+    watching = true;
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) scheduleSuspend('tab in background');
+      else { cancelSuspend(); resumeIfNeeded(); }
+    });
+
+    // On the phone deck the scanner is one page of a horizontal strip — when the
+    // user slides to the mixer/sequencer, the camera has no business running.
+    if (typeof IntersectionObserver !== 'undefined' && videoEl) {
+      new IntersectionObserver(function (entries) {
+        const e = entries[entries.length - 1];
+        panelVisible = !!(e && e.isIntersecting);
+        if (!panelVisible) scheduleSuspend('scanner off-screen');
+        else { cancelSuspend(); resumeIfNeeded(); }
+      }, { threshold: 0.05 }).observe(videoEl);
+    }
+  }
+
   // ── detection loop ───────────────────────────────────────────────────────────
+
+  // Copy the current frame into a small scratch canvas for the model. Detection
+  // accuracy is unchanged (COCO-SSD downscales internally anyway) but the GPU
+  // upload per pass shrinks by an order of magnitude.
+  function grabFrame() {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return null;
+    const w = Math.min(DETECT_WIDTH, vw);
+    const h = Math.round(vh * (w / vw));
+    if (!detCanvas) {
+      detCanvas = document.createElement('canvas');
+      detCtx = detCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    if (detCanvas.width !== w || detCanvas.height !== h) {
+      detCanvas.width = w;
+      detCanvas.height = h;
+    }
+    detCtx.drawImage(videoEl, 0, 0, w, h);
+    return detCanvas;
+  }
 
   async function detectLoop() {
     if (!running || !model) return;
 
     const t0 = performance.now();
+    let ran = false;
 
-    // Skip the expensive detect entirely while the tab/screen is backgrounded or
-    // the video frame isn't ready — just reschedule.
-    if (!document.hidden && videoEl && videoEl.readyState >= 2) {
-      let predictions = [];
-      try {
-        predictions = await model.detect(videoEl);
-      } catch (err) {
-        console.warn('[Vision] detect error', err);
+    // Skip the expensive detect entirely while suspended/backgrounded or the
+    // video frame isn't ready — just reschedule a cheap poll.
+    if (!suspended && !document.hidden && videoEl && videoEl.readyState >= 2) {
+      const frame = grabFrame();
+      if (frame) {
+        let predictions = [];
+        try {
+          predictions = await model.detect(frame);
+        } catch (err) {
+          console.warn('[Vision] detect error', err);
+        }
+        drawOverlay(predictions, videoEl.videoWidth / frame.width);
+        handleBestPrediction(predictions);
+        ran = true;
       }
-      drawOverlay(predictions);
-      handleBestPrediction(predictions);
     }
 
     if (!running) return;
-    // Pace the loop: wait out the remainder of the interval after detection
-    // (which itself can take tens of ms) instead of firing back-to-back.
-    const wait = Math.max(0, DETECT_EVERY_MS - (performance.now() - t0));
+
+    let wait;
+    if (ran) {
+      // Pace to the machine: track what a pass really costs and never spend
+      // more than ~1/3 of wall time detecting. While the sequencer is playing,
+      // back off further — glitch-free audio beats scan latency.
+      avgDetectMs = avgDetectMs * 0.7 + (performance.now() - t0) * 0.3;
+      wait = Math.max(DETECT_EVERY_MS, avgDetectMs * 2.5);
+      if (window.audioEngine && audioEngine.isPlaying && audioEngine.isPlaying()) {
+        wait = Math.max(wait, 240);
+      }
+      wait = Math.min(wait, DETECT_MAX_MS);
+      wait = Math.max(0, wait - (performance.now() - t0));
+    } else {
+      wait = 300; // idle poll while parked
+    }
     setTimeout(detectLoop, wait);
   }
 
@@ -222,12 +363,20 @@ window.Vision = (() => {
 
   // ── canvas overlay ───────────────────────────────────────────────────────────
 
-  function drawOverlay(predictions) {
+  // `scale` maps bbox coords from the downscaled detection frame back to the
+  // full-size video the overlay sits on.
+  function drawOverlay(predictions, scale) {
     if (!canvasEl || !videoEl.videoWidth) return;
 
-    canvasEl.width  = videoEl.videoWidth;
-    canvasEl.height = videoEl.videoHeight;
+    // Resize the backing store only when the feed size actually changes —
+    // reassigning width/height every pass reallocates the canvas and forces a
+    // fresh paint even for identical frames.
+    if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
+      canvasEl.width  = videoEl.videoWidth;
+      canvasEl.height = videoEl.videoHeight;
+    }
 
+    const s = scale || 1;
     const ctx = canvasEl.getContext('2d');
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
@@ -235,7 +384,8 @@ window.Vision = (() => {
       if (pred.score < 0.40) return;
       if (IGNORED_CLASSES[pred.class]) return;   // never draw people
 
-      const [x, y, w, h] = pred.bbox;
+      const x = pred.bbox[0] * s, y = pred.bbox[1] * s,
+            w = pred.bbox[2] * s, h = pred.bbox[3] * s;
       const hit = !!COCO_TO_SAMPLE[pred.class];
 
       // Box

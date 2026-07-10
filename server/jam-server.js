@@ -44,9 +44,37 @@ function lanIps() {
   return ips;
 }
 
-const httpServer = http.createServer((req, res) =>
-  handler(req, res, { public: ROOT, cleanUrls: false })
-);
+// The site's pages. "/" and "/index" resolve to the landing page, "/app" to the
+// studio — serve-handler (6.1.7) can't find a directory's index.html on Windows
+// and renders a file listing of the repo instead, so the mapping is explicit.
+const PAGES = {
+  '/': '/index.html',
+  '/index': '/index.html',
+  '/app': '/app.html',
+};
+
+const httpServer = http.createServer((req, res) => {
+  const parsed = url.parse(req.url);
+  const page = PAGES[parsed.pathname];
+  if (page) req.url = page + (parsed.search || '');
+
+  return handler(req, res, {
+    public: ROOT,
+    cleanUrls: false,
+    // Never list the repo's own directories: it 404s a stray path instead of
+    // publishing the source tree to everyone on the WiFi.
+    directoryListing: false,
+    // no-store on everything: this is the dev/LAN server, and without an
+    // explicit directive browsers fall back to heuristic caching off
+    // Last-Modified — they reuse app.css / ui.js on a plain refresh without
+    // asking, so an edit silently doesn't show up and you debug a change the
+    // page never loaded.
+    headers: [{
+      source: '**',
+      headers: [{ key: 'Cache-Control', value: 'no-store, must-revalidate' }],
+    }],
+  });
+});
 
 // One room = { host: ws|null, clients: Map<id, ws> }. Matches the Durable Object.
 const rooms = new Map();
@@ -117,8 +145,11 @@ wss.on('connection', (ws, req) => {
 
 httpServer.listen(PORT, () => {
   const ips = lanIps();
-  console.log('\nSnap It — studio + jam relay running:');
-  console.log('  local:    http://localhost:' + PORT + '/app.html');
-  ips.forEach((ip) => console.log('  network:  http://' + ip + ':' + PORT + '/app.html   <- friends open this, then Join with the room code'));
+  console.log('\nSnap It — site + studio + jam relay running:');
+  console.log('  landing:  http://localhost:' + PORT + '/');
+  console.log('  studio:   http://localhost:' + PORT + '/app.html');
+  console.log('  studio (phone layout on a desktop browser):');
+  console.log('            http://localhost:' + PORT + '/app.html?mobile=1');
+  ips.forEach((ip) => console.log('  network:  http://' + ip + ':' + PORT + '/   <- friends open this, then Join with the room code'));
   console.log('');
 });
